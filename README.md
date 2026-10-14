@@ -17,6 +17,10 @@ npm run build   # static site in packages/app/dist
 ## Layout
 
 - `packages/engine`: pure TypeScript pattern engine (no DOM, no three.js)
-- `packages/app`: Vite + React app
+- `packages/app`: Vite + React + React Three Fiber editor
+  - `editor/`: 3D stage, shape meshes, gizmos
+  - `panels/`: shelf, inspector, pattern, top bar
+  - `state/`: project with undo/redo and autosave
+- Style sheet (approved look and feel): https://claude.ai/artifact/DgJV4Ht3CvfVbTwkCypNZr; tokens live in `packages/app/src/theme.css`
 - `fixtures/`: starter projects and golden patterns, plus test-crochet results
 - `reference/`: the two prototypes this was built from (read-only)

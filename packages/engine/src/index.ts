@@ -4,3 +4,6 @@ export * from './shapes';
 export * from './stitches';
 export * from './pattern';
 export * from './gauge-presets';
+export * from './project';
+export * from './geometry';
+export * from './history';

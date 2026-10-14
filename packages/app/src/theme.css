@@ -1,0 +1,171 @@
+/* Round by Round theme. Approved style sheet v1: https://claude.ai/artifact/DgJV4Ht3CvfVbTwkCypNZr
+   Linen underneath, heavy paper on top, running stitch at the edges, yarn-drawer colours.
+   Every colour is a token here; components never use literal colours. */
+:root {
+  --oatmeal: #e7dfd1;
+  --oatmeal-thread: rgba(92, 70, 48, 0.07);
+  --paper: #f7f1e6;
+  --paper-edge: #dccfba;
+  --bark: #3b2c22;
+  --bark-soft: #6f5c4c;
+  --rust: #a4492b;
+  --rust-deep: #843620;
+  --on-rust: #f7f1e6;
+  --slate: #4a6070;
+  --moss: #687240;
+  --camel: #b88a52;
+  --heather: #9c9189;
+  --coral: #ec7558;
+  --seaglass: #5fb3a5;
+  --mint: #bfe3d6;
+  --shadow: rgba(59, 44, 34, 0.18);
+  --glow: rgba(255, 180, 90, 0);
+  --grain-op: 0.35;
+  --display: 'Young Serif', 'Iowan Old Style', Georgia, serif;
+  --body: 'Mulish', 'Segoe UI', system-ui, sans-serif;
+  --pattern: 'Courier Prime', 'Courier New', ui-monospace, monospace;
+  --hand: 'Caveat', 'Bradley Hand', cursive;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --oatmeal: #2a211b; --oatmeal-thread: rgba(255, 230, 200, 0.04);
+    --paper: #3a2e25; --paper-edge: #4e3f33;
+    --bark: #f1e6d6; --bark-soft: #c6b4a0;
+    --rust: #e07a52; --rust-deep: #b85a36; --on-rust: #2a211b;
+    --slate: #8eaabd; --moss: #aab874; --camel: #e0b06e; --heather: #7d7067;
+    --coral: #f08a6e; --seaglass: #6fc4b6; --mint: #2f5a50;
+    --shadow: rgba(0, 0, 0, 0.45); --glow: rgba(255, 160, 70, 0.1);
+    --grain-op: 0.18; color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --oatmeal: #2a211b; --oatmeal-thread: rgba(255, 230, 200, 0.04);
+  --paper: #3a2e25; --paper-edge: #4e3f33;
+  --bark: #f1e6d6; --bark-soft: #c6b4a0;
+  --rust: #e07a52; --rust-deep: #b85a36; --on-rust: #2a211b;
+  --slate: #8eaabd; --moss: #aab874; --camel: #e0b06e; --heather: #7d7067;
+  --coral: #f08a6e; --seaglass: #6fc4b6; --mint: #2f5a50;
+  --shadow: rgba(0, 0, 0, 0.45); --glow: rgba(255, 160, 70, 0.1);
+  --grain-op: 0.18; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  color: var(--bark);
+  font: 15px/1.5 var(--body);
+  background-color: var(--oatmeal);
+  background-image:
+    radial-gradient(ellipse 70% 50% at 100% 0%, var(--glow), transparent 70%),
+    repeating-linear-gradient(0deg, var(--oatmeal-thread) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, var(--oatmeal-thread) 0 1px, transparent 1px 4px);
+}
+h1, h2, h3 { font-family: var(--display); font-weight: 400; margin: 0; line-height: 1.15; text-wrap: balance; }
+p { margin: 0; }
+:focus-visible { outline: 3px solid var(--camel); outline-offset: 2px; }
+
+/* Heavy paper with grain; .stitched adds the running-stitch inner edge */
+.paper {
+  position: relative;
+  background: var(--paper);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 var(--paper-edge), 0 3px 10px -4px var(--shadow), 0 12px 24px -16px var(--shadow);
+  isolation: isolate;
+}
+.paper::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; opacity: var(--grain-op); pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .27 0 0 0 0 .2 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+.stitched::after {
+  content: ''; position: absolute; inset: 7px; border-radius: 2px; pointer-events: none;
+  border: 2px dashed var(--heather); opacity: 0.6;
+}
+
+.eyebrow { font: 800 11px/1.2 var(--body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--bark-soft); }
+.note { font: 500 20px/1.15 var(--hand); color: var(--rust); }
+.meta { color: var(--bark-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* Buttons: stitched rust label for the main action, quiet outline for the rest */
+.btn {
+  font: 800 14px/1 var(--body); letter-spacing: 0.02em; cursor: pointer;
+  padding: 10px 16px; border-radius: 6px; border: 0; color: var(--on-rust);
+  background: var(--rust); position: relative;
+  box-shadow: inset 0 -3px 0 var(--rust-deep), 0 2px 4px -1px var(--shadow);
+  transition: transform 0.12s ease;
+}
+.btn::after { content: ''; position: absolute; inset: 3px; border: 1.5px dashed rgba(255, 255, 255, 0.45); border-radius: 4px; pointer-events: none; }
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn.quiet { background: transparent; color: var(--bark); box-shadow: inset 0 0 0 1.5px var(--heather); }
+.btn.quiet::after { border-color: transparent; }
+.btn.quiet:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--rust); color: var(--rust); }
+.btn.small { padding: 7px 11px; font-size: 13px; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.danger.quiet:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--rust-deep); color: var(--rust-deep); }
+
+/* Hang tag label */
+.tag {
+  --tag: var(--camel);
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px 6px 26px; position: relative;
+  background: var(--paper); color: var(--bark);
+  border: 1.5px solid var(--tag); border-radius: 3px 8px 8px 3px;
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 12px 100%, 0 50%);
+  font: 800 12px/1.4 var(--body); letter-spacing: 0.1em; text-transform: uppercase;
+}
+.tag::before { content: ''; position: absolute; left: 9px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; border: 1.5px solid var(--tag); background: var(--oatmeal); }
+
+/* Yarn-strand slider with a wooden bead */
+input[type='range'] { -webkit-appearance: none; appearance: none; width: 100%; background: transparent; height: 24px; margin: 0; }
+input[type='range']::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: repeating-linear-gradient(60deg, var(--rust) 0 4px, var(--rust-deep) 4px 6px); }
+input[type='range']::-moz-range-track { height: 6px; border-radius: 3px; background: repeating-linear-gradient(60deg, var(--rust) 0 4px, var(--rust-deep) 4px 6px); }
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; margin-top: -7px; border: 0;
+  background: radial-gradient(circle at 35% 30%, #f3dcb6, #b88a52 65%, #7d5a31); box-shadow: 0 2px 4px var(--shadow); cursor: grab;
+}
+input[type='range']::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; border: 0; background: radial-gradient(circle at 35% 30%, #f3dcb6, #b88a52 65%, #7d5a31); box-shadow: 0 2px 4px var(--shadow); }
+
+select, input[type='text'], input[type='number'], textarea {
+  font: inherit; color: var(--bark); background: var(--paper);
+  border: 1.5px solid var(--heather); border-radius: 6px; padding: 6px 9px; width: 100%; min-width: 0;
+}
+input[type='number'] { font-variant-numeric: tabular-nums; padding: 5px 6px; }
+textarea { font: 12px/1.4 var(--pattern); resize: vertical; }
+
+/* Sewing-button radios */
+.buttons { display: flex; gap: 14px; flex-wrap: wrap; border: 0; padding: 0; margin: 0; }
+.sew { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; font-weight: 700; font-size: 13px; position: relative; }
+.sew input { position: absolute; opacity: 0; pointer-events: none; }
+.sew .disc {
+  width: 36px; height: 36px; border-radius: 50%; position: relative;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--camel) 70%, white), var(--camel) 60%, color-mix(in srgb, var(--camel) 70%, black));
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.08), 0 2px 4px -1px var(--shadow);
+  transition: transform 0.15s ease;
+}
+.sew .disc::before {
+  content: ''; position: absolute; inset: 0; margin: auto; width: 4px; height: 4px; border-radius: 50%; background: transparent;
+  box-shadow: -5px -5px 0 var(--bark), 5px -5px 0 var(--bark), -5px 5px 0 var(--bark), 5px 5px 0 var(--bark);
+}
+.sew .disc::after {
+  content: ''; position: absolute; inset: 0; margin: auto; width: 15px; height: 15px; opacity: 0;
+  background:
+    linear-gradient(45deg, transparent 44%, var(--rust) 44% 56%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, var(--rust) 44% 56%, transparent 56%);
+  transition: opacity 0.15s ease;
+}
+.sew input:checked + .disc::after { opacity: 1; }
+.sew input:checked + .disc { transform: rotate(12deg); }
+.sew input:focus-visible + .disc { outline: 3px solid var(--rust); outline-offset: 3px; }
+.sew small { color: var(--bark-soft); font-weight: 400; font-size: 11px; margin-top: -3px; }
+
+/* Segmented choice (Sew / Fuse, Move / Turn) */
+.seg { display: flex; gap: 6px; }
+.seg label { flex: 1; text-align: center; padding: 7px 8px; border-radius: 6px; border: 1.5px solid var(--heather); cursor: pointer; font-weight: 800; font-size: 13px; position: relative; background: var(--paper); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { border-color: var(--rust); color: var(--rust); background: color-mix(in srgb, var(--rust) 8%, var(--paper)); }
+.seg label:has(input:focus-visible) { outline: 3px solid var(--camel); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
