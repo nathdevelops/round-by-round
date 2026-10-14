@@ -1,5 +1,5 @@
 import { SHAPE_KINDS, SHAPE_NAMES, type ShapeKind } from '@rbr/engine';
-import { addShapeOf, topOf } from '../state/actions';
+import { addShapeOf } from '../state/actions';
 import type { ReactElement } from 'react';
 import { useEditor } from '../state/editor';
 import { SHAPE_DRAG_TYPE } from '../editor/Stage';
@@ -15,13 +15,12 @@ const ICONS: Record<ShapeKind, ReactElement> = {
   dome: <path d="M2 12 A6 6 0 0 1 14 12 Z" />,
 };
 
-/** The pegboard of shapes. Drag one onto the stage, or tap to add it (onto the selected shape if there is one). */
+/** The pegboard of shapes. Drag one onto the table, or tap to add it beside the others. */
 export function Shelf() {
   const ed = useEditor();
   const add = (kind: ShapeKind) => {
-    const at = ed.selected ? topOf(ed.project, ed.selected) : undefined;
-    const { project, id } = addShapeOf(ed.project, kind, at && { ...at, hostId: ed.selected! });
-    ed.edit(project, id);
+    const { project, id } = addShapeOf(ed.project, kind);
+    ed.edit(project, [id]);
   };
   return (
     <nav className="shelf" aria-label="Shapes">
@@ -35,14 +34,14 @@ export function Shelf() {
             draggable
             onDragStart={(e) => { e.dataTransfer.setData(SHAPE_DRAG_TYPE, k); e.dataTransfer.effectAllowed = 'copy'; }}
             onClick={() => add(k)}
-            title={ed.selected ? `Add a ${SHAPE_NAMES[k].toLowerCase()} on top of the selected shape` : `Add a ${SHAPE_NAMES[k].toLowerCase()}`}
+            title={`Add a ${SHAPE_NAMES[k].toLowerCase()}`}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">{ICONS[k]}</svg>
             {SHAPE_NAMES[k]}
           </button>
         ))}
       </div>
-      <p className="note shelf-note">drop one on a shape to sew it there</p>
+      <p className="note shelf-note">drag one onto the table, then move it into place</p>
     </nav>
   );
 }

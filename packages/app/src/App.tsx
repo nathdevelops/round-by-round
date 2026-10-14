@@ -1,4 +1,5 @@
-import { findShape, removeShape } from '@rbr/engine';
+import { fuseShapes, nextPieceId } from '@rbr/engine';
+import { removeSelection, selectedShapes } from './state/actions';
 import { useEffect } from 'react';
 import { Stage } from './editor/Stage';
 import { Inspector } from './panels/Inspector';
@@ -20,10 +21,13 @@ function Shortcuts() {
       else if (mod) return;
       else if (k === 'm') ed.setMode('translate');
       else if (k === 't') ed.setMode('rotate');
-      else if (k === 'escape') { if (ed.placing) ed.setPlacing(false); else ed.select(null); }
-      else if ((k === 'delete' || k === 'backspace') && ed.selected && findShape(ed.project, ed.selected)) {
+      else if (k === 'escape') ed.select(null);
+      else if (k === 'f' && ed.selected.length > 1) {
+        const { project, id } = fuseShapes(ed.project, selectedShapes(ed.project, ed.selected).map((s) => s.id), nextPieceId(ed.project));
+        if (id) ed.edit(project, [id]);
+      } else if ((k === 'delete' || k === 'backspace') && ed.selected.length) {
         e.preventDefault();
-        ed.edit(removeShape(ed.project, ed.selected), null);
+        ed.edit(removeSelection(ed.project, ed.selected), []);
       }
     };
     window.addEventListener('keydown', onKey);

@@ -1,10 +1,11 @@
 import {
-  addMirror, clearJoin, findShape, joinBetween, nextId, partnerOf, removeShape, setJoin, updateShape,
-  SHAPE_NAMES, YARN_COLORS, type Quat, type Vec3,
+  addMirror, findPiece, findShape, fuseShapes, nextId, nextPieceId, partnerOf, pieceOf, separatePiece,
+  updatePiece, updateShape, SHAPE_NAMES, YARN_COLORS, type FusedPiece, type Quat, type Shape, type Vec3,
 } from '@rbr/engine';
 import { useEffect, useState, type CSSProperties } from "react";
 import { Euler, MathUtils, Quaternion } from 'three';
-import { useEditor } from '../state/editor';
+import { removeSelection, selectedShapes } from '../state/actions';
+import { useEditor, type Editor } from '../state/editor';
 
 const PARAM_UI: Record<string, { label: string; min: number; max: number; step: number; unit?: string; pct?: boolean }> = {
   radius: { label: 'Radius', min: 0.3, max: 12, step: 0.1, unit: 'cm' },
@@ -43,22 +44,96 @@ const toEulerDeg = (q: Quat): Vec3 => {
 };
 const fromEulerDeg = (d: Vec3): Quat => new Quaternion().setFromEuler(new Euler(...d.map(MathUtils.degToRad) as Vec3, 'XYZ')).toArray() as Quat;
 
+function YarnPicker({ value, onPick }: { value: string; onPick(hex: string): void }) {
+  return (
+    <div className="group">
+      <span className="field-label">Yarn colour</span>
+      <div className="yarns" role="radiogroup" aria-label="Yarn colour">
+        {YARN_COLORS.map((c) => (
+          <button
+            key={c.hex} type="button" role="radio" aria-checked={value === c.hex} title={c.name}
+            className={`yarn${value === c.hex ? ' on' : ''}`} style={{ '--c': c.hex } as CSSProperties}
+            onClick={() => onPick(c.hex)}
+          ><span className="sr">{c.name}</span></button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const KEYS = <p className="meta keys">Shift-click to pick several · F fuse · M move · T turn · Del remove · Ctrl+Z undo</p>;
+
 export function Inspector() {
   const ed = useEditor();
-  const { project } = ed;
-  const s = ed.selected ? findShape(project, ed.selected) : undefined;
-  if (!s) {
+  const { project, selected } = ed;
+  if (!selected.length) {
     return (
-      <section className="paper card inspector" aria-label="Shape">
+      <section className="paper card inspector" aria-label="Selection">
         <span className="eyebrow">Nothing selected</span>
-        <p className="meta">Click a shape to change its size, colour and how it joins. Drag the stage to look around, scroll to zoom.</p>
-        <p className="meta keys">M move · T turn · Del remove · Ctrl+Z undo · Ctrl+Shift+Z redo</p>
+        <p className="meta">Click a shape to change it. Shift-click shapes to pick several, line them up with Move and Turn, then fuse them into one piece. Drag the stage to look around, scroll to zoom.</p>
+        {KEYS}
       </section>
     );
   }
+  if (selected.length > 1) return <ManyInspector ed={ed} />;
+  const piece = findPiece(project, selected[0]!);
+  if (piece) return <PieceInspector ed={ed} piece={piece} />;
+  const s = findShape(project, selected[0]!);
+  return s ? <ShapeInspector ed={ed} s={s} /> : null;
+}
+
+function ManyInspector({ ed }: { ed: Editor }) {
+  const { project, selected } = ed;
+  const shapes = selectedShapes(project, selected);
+  const fuse = () => {
+    const { project: next, id } = fuseShapes(project, shapes.map((s) => s.id), nextPieceId(project));
+    if (id) ed.edit(next, [id]);
+  };
+  return (
+    <section className="paper card inspector" aria-label="Selection">
+      <span className="eyebrow">{selected.length} picked · {shapes.length} shapes</span>
+      <p className="meta">Move and turn them together. When they overlap the way you want, fuse them: the outside of all of them becomes one shell, crocheted as one piece.</p>
+      <div className="actions">
+        <button type="button" className="btn" onClick={fuse} disabled={shapes.length < 2}>Fuse into one piece</button>
+        <button type="button" className="btn quiet small danger" onClick={() => ed.edit(removeSelection(project, selected), [])}>Remove</button>
+      </div>
+      {KEYS}
+    </section>
+  );
+}
+
+function PieceInspector({ ed, piece }: { ed: Editor; piece: FusedPiece }) {
+  const { project } = ed;
+  const parts = project.shapes.filter((s) => piece.shapeIds.includes(s.id));
+  return (
+    <section className="paper card inspector" aria-label="Fused piece">
+      <div className="insp-head">
+        <span className="eyebrow">Fused piece · {parts.length} shapes</span>
+        <input type="text" id="piece-name" aria-label="Name" className="name-field" value={piece.name}
+          onChange={(e) => ed.preview(updatePiece(project, piece.id, { name: e.target.value }))} onBlur={() => ed.settle()} />
+        <p className="meta">Crocheted as one shell around all its shapes. It moves as one; pick a part below to adjust it.</p>
+      </div>
+      <YarnPicker value={piece.color} onPick={(hex) => ed.edit(updatePiece(project, piece.id, { color: hex }))} />
+      <div className="group">
+        <span className="field-label">Parts</span>
+        <ul className="parts">
+          {parts.map((s) => (
+            <li key={s.id}><button type="button" className="link" onClick={() => ed.setSelection([s.id])}>{s.name}</button><span className="meta">{SHAPE_NAMES[s.kind]}</span></li>
+          ))}
+        </ul>
+      </div>
+      <div className="actions">
+        <button type="button" className="btn quiet small" onClick={() => ed.edit(separatePiece(project, piece.id), piece.shapeIds)}>Separate</button>
+        <button type="button" className="btn quiet small danger" onClick={() => ed.edit(removeSelection(project, [piece.id]), [])}>Remove</button>
+      </div>
+    </section>
+  );
+}
+
+function ShapeInspector({ ed, s }: { ed: Editor; s: Shape }) {
+  const { project } = ed;
   const partner = partnerOf(project, s.id);
-  const host = s.hostId ? findShape(project, s.hostId) : undefined;
-  const join = host ? joinBetween(project, s.id, host.id) : undefined;
+  const piece = pieceOf(project, s.id);
   const patch = (p: Parameters<typeof updateShape>[2]) => ed.edit(updateShape(project, s.id, p));
   const previewParam = (k: string, v: number) => ed.preview(updateShape(project, s.id, { params: { [k]: v } }));
   const pos = s.transform.position;
@@ -69,8 +144,9 @@ export function Inspector() {
   return (
     <section className="paper card inspector" aria-label="Shape">
       <div className="insp-head">
-        <span className="eyebrow">Selected · {SHAPE_NAMES[s.kind]}</span>
+        <span className="eyebrow">{piece ? `Part of ${piece.name}` : 'Selected'} · {SHAPE_NAMES[s.kind]}</span>
         <input type="text" id="shape-name" aria-label="Name" className="name-field" value={s.name} onChange={(e) => ed.preview(updateShape(project, s.id, { name: e.target.value }))} onBlur={() => ed.settle()} />
+        {piece && <p className="meta"><button type="button" className="link" onClick={() => ed.setSelection([piece.id])}>Back to {piece.name}</button></p>}
         {partner && <p className="meta">Mirrored with {partner.name}. Changes apply to both.</p>}
       </div>
 
@@ -91,18 +167,7 @@ export function Inspector() {
         })}
       </div>
 
-      <div className="group">
-        <span className="field-label">Yarn colour</span>
-        <div className="yarns" role="radiogroup" aria-label="Yarn colour">
-          {YARN_COLORS.map((c) => (
-            <button
-              key={c.hex} type="button" role="radio" aria-checked={s.color === c.hex} title={c.name}
-              className={`yarn${s.color === c.hex ? ' on' : ''}`} style={{ '--c': c.hex } as CSSProperties}
-              onClick={() => patch({ color: c.hex })}
-            ><span className="sr">{c.name}</span></button>
-          ))}
-        </div>
-      </div>
+      {!piece && <YarnPicker value={s.color} onPick={(hex) => patch({ color: hex })} />}
 
       <div className="group">
         <span className="field-label">Position <span className="meta">cm</span></span>
@@ -115,32 +180,14 @@ export function Inspector() {
         </div>
       </div>
 
-      <div className="group">
-        <span className="field-label">Joined to</span>
-        {host ? (
-          <>
-            <p className="joined"><b>{host.name}</b> <button type="button" className="link" onClick={() => ed.edit(clearJoin(updateShape(project, s.id, { hostId: undefined }), s.id, host.id))}>unhook</button></p>
-            <div className="seg" role="radiogroup" aria-label="Join">
-              <label><input type="radio" name="join" id="join-sew" checked={join?.mode !== 'fuse'} onChange={() => ed.edit(setJoin(project, s.id, host.id, 'sew'))} />Sew</label>
-              <label><input type="radio" name="join" id="join-fuse" checked={join?.mode === 'fuse'} onChange={() => ed.edit(setJoin(project, s.id, host.id, 'fuse'))} />Fuse</label>
-            </div>
-            <p className="meta">{join?.mode === 'fuse' ? 'Crocheted as one piece with its host.' : 'Crocheted separately, then sewn on.'}</p>
-          </>
-        ) : (
-          <p className="meta">Standing on its own. Use “Move onto a shape” or drop shapes onto it.</p>
-        )}
-      </div>
-
       <div className="actions">
-        <button type="button" className="btn small" onClick={() => ed.setPlacing(!ed.placing)} aria-pressed={ed.placing}>
-          {ed.placing ? 'Pick a shape…' : 'Move onto a shape'}
-        </button>
         <button type="button" className="btn quiet small" disabled={!!partner} onClick={() => {
           const id = nextId(project, `${s.kind}`);
-          ed.edit(addMirror(project, s.id, id), id);
+          ed.edit(addMirror(project, s.id, id), [id]);
         }} title={partner ? 'Already mirrored' : 'Make a linked copy on the other side'}>Mirror</button>
-        <button type="button" className="btn quiet small danger" onClick={() => ed.edit(removeShape(project, s.id), null)}>Remove</button>
+        <button type="button" className="btn quiet small danger" onClick={() => ed.edit(removeSelection(project, [s.id]), [])}>Remove</button>
       </div>
+      {!piece && <p className="meta">Shift-click another shape to fuse them.</p>}
     </section>
   );
 }

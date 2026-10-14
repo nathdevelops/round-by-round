@@ -1,6 +1,6 @@
 import type { ProfilePoint } from './types';
 import { shapeProfile, type ShapeSpec, type ShapeKind } from './shapes';
-import type { Quat, Transform, Vec3 } from './project';
+import type { Quat, Vec3 } from './project';
 
 /**
  * Display geometry for the editor. A shape's crochet profile runs in working order
@@ -45,15 +45,33 @@ export const normalize = (v: Vec3): Vec3 => {
 /** Unit quaternion turning unit vector a onto unit vector b. */
 export function quatFromUnitVectors(a: Vec3, b: Vec3): Quat {
   const d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  if (d < -0.999999) {
-    // Opposite: half turn about any axis perpendicular to a.
+  if (d < 0) {
+    // Nearly opposite vectors lose precision in the direct formula, so go via -a:
+    // a half turn onto -a, then the short turn from -a to b.
     const axis = normalize(Math.abs(a[0]) < 0.9 ? [0, -a[2], a[1]] : [-a[2], 0, a[0]]);
-    return [axis[0], axis[1], axis[2], 0];
+    const half: Quat = [axis[0], axis[1], axis[2], 0];
+    return mulQuat(shortTurn([-a[0], -a[1], -a[2]], b), half);
   }
+  return shortTurn(a, b);
+}
+
+function shortTurn(a: Vec3, b: Vec3): Quat {
+  const d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const c: Vec3 = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const w = 1 + d;
   const l = Math.hypot(c[0], c[1], c[2], w);
   return [c[0] / l, c[1] / l, c[2] / l, w / l];
+}
+
+/** Hamilton product p·q (apply q, then p). */
+export function mulQuat(p: Quat, q: Quat): Quat {
+  const [px, py, pz, pw] = p, [qx, qy, qz, qw] = q;
+  return [
+    pw * qx + px * qw + py * qz - pz * qy,
+    pw * qy - px * qz + py * qw + pz * qx,
+    pw * qz + px * qy - py * qx + pz * qw,
+    pw * qw - px * qx - py * qy - pz * qz,
+  ];
 }
 
 /** Rotate v by unit quaternion q. */
@@ -68,18 +86,4 @@ export function rotate(q: Quat, v: Vec3): Vec3 {
     iy * w + iw * -y + iz * -x - ix * -z,
     iz * w + iw * -z + ix * -y - iy * -x,
   ];
-}
-
-/**
- * Snap to surface: put a shape's base on a point of another shape, pointing outward along
- * the surface normal, and sink it a little so it reads as sewn on rather than balanced.
- */
-export function placeOnSurface(spec: ShapeSpec, point: Vec3, normal: Vec3, keepScale: Vec3 = [1, 1, 1]): Transform {
-  const n = normalize(normal);
-  const sink = Math.min(0.4, shapeHeight(spec) * 0.08);
-  return {
-    position: [point[0] - n[0] * sink, point[1] - n[1] * sink, point[2] - n[2] * sink],
-    rotation: quatFromUnitVectors([0, 1, 0], n),
-    scale: [...keepScale],
-  };
 }

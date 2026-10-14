@@ -7,3 +7,4 @@ export * from './gauge-presets';
 export * from './project';
 export * from './geometry';
 export * from './history';
+export * from './fuse';

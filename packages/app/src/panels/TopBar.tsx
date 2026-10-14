@@ -17,7 +17,7 @@ export function TopBar() {
 
   const open = (t: string) => {
     try {
-      ed.edit(parseProject(t), null);
+      ed.edit(parseProject(t), []);
       setDialog(null);
       setPaste('');
       setError('');
@@ -83,8 +83,8 @@ export function TopBar() {
                 <h2 id="dlg-title">Start something new</h2>
                 <p className="meta">You can undo this if you change your mind.</p>
                 <div className="row">
-                  <button type="button" className="btn" onClick={() => { ed.edit(emptyProject(), null); close(); }}>Blank table</button>
-                  <button type="button" className="btn quiet" onClick={() => { ed.edit(starterProject(), null); close(); }}>Mushroom to start from</button>
+                  <button type="button" className="btn" onClick={() => { ed.edit(emptyProject(), []); close(); }}>Blank table</button>
+                  <button type="button" className="btn quiet" onClick={() => { ed.edit(starterProject(), []); close(); }}>Mushroom to start from</button>
                 </div>
               </>
             )}

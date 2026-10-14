@@ -1,5 +1,6 @@
 import type { RoundingMode, Terms } from './types';
 import { SHAPE_DEFAULTS, type ShapeKind } from './shapes';
+import { shapeHeight, shapeRadius } from './geometry';
 
 /**
  * The project file: what the editor saves and reopens. Plain JSON, versioned.
@@ -47,6 +48,18 @@ export interface Marker {
   note?: string;
 }
 
+/**
+ * Shapes fused into one piece: crocheted as a single shell that follows the outside
+ * of all of them. The piece moves as one; its parts can still be adjusted one at a time.
+ */
+export interface FusedPiece {
+  id: string;
+  name: string;
+  shapeIds: string[];
+  /** Yarn colour of the whole piece, CSS hex. */
+  color: string;
+}
+
 export interface ProjectSettings {
   yarnId: string;
   stretch: number;
@@ -59,6 +72,7 @@ export interface Project {
   name: string;
   shapes: Shape[];
   joins: Join[];
+  fused: FusedPiece[];
   markers: Marker[];
   settings: ProjectSettings;
 }
@@ -100,18 +114,18 @@ export function makeShape(kind: ShapeKind, id: string, over: Partial<Omit<Shape,
 }
 
 export function emptyProject(name = 'Untitled'): Project {
-  return { version: 1, name, shapes: [], joins: [], markers: [], settings: { ...DEFAULT_SETTINGS } };
+  return { version: 1, name, shapes: [], joins: [], fused: [], markers: [], settings: { ...DEFAULT_SETTINGS } };
 }
 
-/** The project a first visit opens with: a red mushroom, cap sewn onto a stem. */
+/** The project a first visit opens with: a mushroom cap sitting on its stem, ready to fuse. */
 export function starterProject(): Project {
   const stem = makeShape('cylinder', 'stem', { name: 'Stem', color: '#efe6d4', params: { radius: 1.6, height: 3.6, edge: 0.6 } });
   const cap = makeShape('dome', 'cap', {
-    name: 'Cap', color: '#a4492b', hostId: 'stem',
+    name: 'Cap', color: '#a4492b',
     params: { radius: 3.4, flatness: 0.7 },
     transform: { position: [0, 3.3, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
   });
-  return { ...emptyProject('Little Red Mushroom'), shapes: [stem, cap], joins: [{ a: 'cap', b: 'stem', mode: 'sew' }] };
+  return { ...emptyProject('Little Red Mushroom'), shapes: [stem, cap] };
 }
 
 // `+ 0` turns -0 into 0 so a saved file reads back exactly.
@@ -145,15 +159,15 @@ function mirroredHost(p: Project, hostId: string | undefined): string | undefine
 
 export type ShapePatch = Partial<Pick<Shape, 'name' | 'kind' | 'params' | 'transform' | 'color' | 'hostId'>>;
 
-/** Apply edits to one shape and keep its mirror partner in step. */
-export function updateShape(p: Project, id: string, patch: ShapePatch): Project {
+/** Apply edits to one shape and, unless `mirror` is false, keep its mirror partner in step. */
+export function updateShape(p: Project, id: string, patch: ShapePatch, mirror = true): Project {
   const s = findShape(p, id);
   if (!s) return p;
   const next: Shape = { ...s, ...patch, params: { ...s.params, ...patch.params } };
   if (patch.transform) next.transform = cloneTransform(patch.transform);
   if ('hostId' in patch && !patch.hostId) delete next.hostId;
   let shapes = p.shapes.map((o) => (o.id === id ? next : o));
-  const partner = partnerOf(p, id);
+  const partner = mirror ? partnerOf(p, id) : undefined;
   if (partner) {
     const q: Shape = {
       ...partner,
@@ -202,8 +216,70 @@ export function removeShape(p: Project, id: string): Project {
       return c;
     }),
     joins: p.joins.filter((j) => j.a !== id && j.b !== id),
+    fused: p.fused
+      .map((f) => ({ ...f, shapeIds: f.shapeIds.filter((s) => s !== id) }))
+      .filter((f) => f.shapeIds.length > 1),
     markers: p.markers.filter((m) => m.shapeId !== id),
   };
+}
+
+// ---- Fused pieces ----
+
+export const findPiece = (p: Project, id: string) => p.fused.find((f) => f.id === id);
+
+/** The fused piece a shape belongs to, if any. */
+export const pieceOf = (p: Project, shapeId: string) => p.fused.find((f) => f.shapeIds.includes(shapeId));
+
+/**
+ * Fuse shapes (and any pieces they already belong to) into one piece.
+ * Needs at least two shapes in the end. Returns the project and the piece id.
+ */
+export function fuseShapes(p: Project, shapeIds: string[], newId: string): { project: Project; id: string | null } {
+  const ids = new Set<string>();
+  const absorbed = new Set<string>();
+  for (const sid of shapeIds) {
+    if (!findShape(p, sid)) continue;
+    const f = pieceOf(p, sid);
+    if (f) { absorbed.add(f.id); f.shapeIds.forEach((x) => ids.add(x)); } else ids.add(sid);
+  }
+  if (ids.size < 2) return { project: p, id: null };
+  const first = [...absorbed].map((a) => findPiece(p, a)!)[0];
+  const ordered = p.shapes.map((s) => s.id).filter((s) => ids.has(s));
+  const names = ordered.map((s) => findShape(p, s)!.name);
+  const piece: FusedPiece = {
+    id: first?.id ?? newId,
+    name: first?.name ?? (names.length <= 3 ? names.join(' + ') : `${names.slice(0, 2).join(' + ')} + ${names.length - 2} more`),
+    shapeIds: ordered,
+    color: first?.color ?? biggest(p, ordered).color,
+  };
+  return { project: { ...p, fused: [...p.fused.filter((f) => !absorbed.has(f.id)), piece] }, id: piece.id };
+}
+
+/** The shape with the most bulk, whose colour a new fused piece takes. */
+function biggest(p: Project, ids: string[]): Shape {
+  const bulk = (s: Shape) => shapeRadius(s) ** 2 * shapeHeight(s);
+  return ids.map((id) => findShape(p, id)!).reduce((a, b) => (bulk(b) > bulk(a) ? b : a));
+}
+
+/** Undo a fusion: the shapes become separate pieces again, each in the piece's colour. */
+export function separatePiece(p: Project, pieceId: string): Project {
+  const f = findPiece(p, pieceId);
+  if (!f) return p;
+  return {
+    ...p,
+    fused: p.fused.filter((x) => x.id !== pieceId),
+    shapes: p.shapes.map((s) => (f.shapeIds.includes(s.id) ? { ...s, color: f.color } : s)),
+  };
+}
+
+export function updatePiece(p: Project, pieceId: string, patch: Partial<Pick<FusedPiece, 'name' | 'color'>>): Project {
+  return { ...p, fused: p.fused.map((f) => (f.id === pieceId ? { ...f, ...patch } : f)) };
+}
+
+/** A fresh piece id. */
+export function nextPieceId(p: Project): string {
+  const used = new Set(p.fused.map((f) => f.id));
+  for (let i = 1; ; i++) if (!used.has(`piece-${i}`)) return `piece-${i}`;
 }
 
 export const joinBetween = (p: Project, a: string, b: string) =>
@@ -295,6 +371,19 @@ export function parseProject(text: string): Project {
   const joins: Join[] = (Array.isArray(o.joins) ? o.joins : [])
     .filter((j: Record<string, unknown>) => ids.has(j.a as string) && ids.has(j.b as string) && (j.mode === 'sew' || j.mode === 'fuse'))
     .map((j: Record<string, unknown>) => ({ a: j.a as string, b: j.b as string, mode: j.mode as JoinMode, ...(isNum(j.blend) ? { blend: j.blend } : {}) }));
+  const claimed = new Set<string>();
+  const fused: FusedPiece[] = (Array.isArray(o.fused) ? o.fused : []).flatMap((v: Record<string, unknown>, i: number) => {
+    if (typeof v.id !== 'string' || !Array.isArray(v.shapeIds)) fail(`fused piece ${i + 1} is incomplete`);
+    const members = (v.shapeIds as unknown[]).filter((x): x is string => typeof x === 'string' && ids.has(x) && !claimed.has(x));
+    if (members.length < 2) return [];
+    members.forEach((m) => claimed.add(m));
+    return [{
+      id: v.id as string,
+      name: typeof v.name === 'string' && v.name ? v.name : 'Fused piece',
+      shapeIds: members,
+      color: typeof v.color === 'string' && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color : YARN_COLORS[0]!.hex,
+    }];
+  });
   const markers: Marker[] = (Array.isArray(o.markers) ? o.markers : []).filter((m: Record<string, unknown>) => ids.has(m.shapeId as string) && isVec(m.position, 3));
   const st = (o.settings ?? {}) as Record<string, unknown>;
   const settings: ProjectSettings = {
@@ -303,5 +392,5 @@ export function parseProject(text: string): Project {
     rounding: st.rounding === 'balanced3' || st.rounding === 'smooth' ? st.rounding : 'classic6',
     terms: st.terms === 'UK' ? 'UK' : 'US',
   };
-  return { version: 1, name: typeof o.name === 'string' && o.name ? o.name : 'Untitled', shapes, joins, markers, settings };
+  return { version: 1, name: typeof o.name === 'string' && o.name ? o.name : 'Untitled', shapes, joins, fused, markers, settings };
 }

@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   addMirror, addShape, commit, displayProfile, historyOf, makeShape, mirrorTransform, parseProject,
-  partnerOf, placeOnSurface, ProjectFileError, quatFromUnitVectors, redo, removeShape, rotate,
+  partnerOf, ProjectFileError, quatFromUnitVectors, redo, removeShape, rotate,
   serializeProject, setJoin, shapeHeight, starterProject, undo, updateShape, emptyProject,
   SHAPE_DEFAULTS, SHAPE_KINDS, type Project, type Quat, type Vec3,
 } from '../src';
@@ -144,7 +144,7 @@ describe('history', () => {
   });
 });
 
-describe('display geometry and snapping', () => {
+describe('display geometry and rotations', () => {
   it('puts every shape base at y = 0 with the wide end of cones and domes at the bottom', () => {
     for (const kind of SHAPE_KINDS) {
       const pts = displayProfile({ kind, params: {} });
@@ -166,10 +166,4 @@ describe('display geometry and snapping', () => {
     close(rotate(quatFromUnitVectors([0, 1, 0], [0, -1, 0]), [0, 1, 0]), [0, -1, 0]);
   });
 
-  it('places a shape on a surface pointing outward and slightly sunk in', () => {
-    const t = placeOnSurface({ kind: 'sphere', params: { radius: 1 } }, [3, 0, 0], [1, 0, 0]);
-    close(rotate(t.rotation, [0, 1, 0]), [1, 0, 0]);
-    expect(t.position[0]).toBeLessThan(3);
-    expect(t.position[0]).toBeGreaterThan(2.5);
-  });
 });

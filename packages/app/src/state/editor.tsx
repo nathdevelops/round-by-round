@@ -15,19 +15,17 @@ interface State {
   h: History<Project>;
   /** Project as it was before the gesture in progress, if any. */
   base: Project | null;
-  selected: string | null;
-  /** Waiting for a click on another shape to snap the selection onto. */
-  placing: boolean;
+  /** Selected shape ids and fused piece ids. One shape inside a fused piece means "adjust that part". */
+  selected: string[];
   mode: GizmoMode;
 }
 
 type Action =
-  | { type: 'edit'; project: Project; preview?: boolean; select?: string | null }
+  | { type: 'edit'; project: Project; preview?: boolean; select?: string[] }
   | { type: 'settle' }
   | { type: 'undo' }
   | { type: 'redo' }
-  | { type: 'select'; id: string | null }
-  | { type: 'placing'; on: boolean }
+  | { type: 'select'; ids: string[] }
   | { type: 'mode'; mode: GizmoMode };
 
 function settle(s: State): State {
@@ -36,8 +34,9 @@ function settle(s: State): State {
 }
 
 function keepSelection(s: State): State {
-  const ok = s.selected && s.h.present.shapes.some((x) => x.id === s.selected);
-  return ok ? s : { ...s, selected: null, placing: false };
+  const p = s.h.present;
+  const kept = s.selected.filter((id) => p.shapes.some((x) => x.id === id) || p.fused.some((f) => f.id === id));
+  return kept.length === s.selected.length ? s : { ...s, selected: kept };
 }
 
 function reducer(s: State, a: Action): State {
@@ -55,9 +54,7 @@ function reducer(s: State, a: Action): State {
     case 'redo':
       return keepSelection({ ...settle(s), h: redo(settle(s).h) });
     case 'select':
-      return { ...settle(s), selected: a.id, placing: false };
-    case 'placing':
-      return { ...s, placing: a.on && !!s.selected };
+      return { ...settle(s), selected: a.ids };
     case 'mode':
       return { ...s, mode: a.mode };
   }
@@ -77,21 +74,21 @@ function loadSaved(): Project {
 
 export interface Editor {
   project: Project;
-  selected: string | null;
-  placing: boolean;
+  selected: string[];
   mode: GizmoMode;
   canUndo: boolean;
   canRedo: boolean;
   saved: 'saved' | 'pending' | 'unavailable';
-  /** Replace the project with one undo step. */
-  edit(project: Project, select?: string | null): void;
+  /** Replace the project with one undo step, optionally changing the selection. */
+  edit(project: Project, select?: string[]): void;
   /** Show a change mid-gesture; call settle() when the gesture ends. */
   preview(project: Project): void;
   settle(): void;
   undo(): void;
   redo(): void;
-  select(id: string | null): void;
-  setPlacing(on: boolean): void;
+  /** Select one item, or with `add` toggle it in the current selection. */
+  select(id: string | null, add?: boolean): void;
+  setSelection(ids: string[]): void;
   setMode(mode: GizmoMode): void;
 }
 
@@ -99,7 +96,7 @@ const Ctx = createContext<Editor | null>(null);
 
 export function EditorProvider({ children }: { children: ReactNode }) {
   const [s, dispatch] = useReducer(reducer, undefined, () => ({
-    h: historyOf(loadSaved()), base: null, selected: null, placing: false, mode: 'translate' as GizmoMode,
+    h: historyOf(loadSaved()), base: null, selected: [] as string[], mode: 'translate' as GizmoMode,
   }));
   const [saved, setSaved] = useState<Editor['saved']>('saved');
   const first = useRef(true);
@@ -123,7 +120,6 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   const api = useMemo<Editor>(() => ({
     project,
     selected: s.selected,
-    placing: s.placing,
     mode: s.mode,
     canUndo: s.h.past.length > 0 || !!s.base,
     canRedo: s.h.future.length > 0,
@@ -133,10 +129,13 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     settle: () => dispatch({ type: 'settle' }),
     undo: () => dispatch({ type: 'undo' }),
     redo: () => dispatch({ type: 'redo' }),
-    select: (id) => dispatch({ type: 'select', id }),
-    setPlacing: (on) => dispatch({ type: 'placing', on }),
+    select: (id, add) => dispatch({
+      type: 'select',
+      ids: id === null ? [] : add ? (s.selected.includes(id) ? s.selected.filter((x) => x !== id) : [...s.selected, id]) : [id],
+    }),
+    setSelection: (ids) => dispatch({ type: 'select', ids }),
     setMode: (mode) => dispatch({ type: 'mode', mode }),
-  }), [project, s.selected, s.placing, s.mode, s.h.past.length, s.h.future.length, s.base, saved]);
+  }), [project, s.selected, s.mode, s.h.past.length, s.h.future.length, s.base, saved]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
