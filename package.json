@@ -1,0 +1,16 @@
+{
+  "name": "round-by-round",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "npm run dev -w @rbr/app",
+    "build": "npm run build -w @rbr/app",
+    "test": "npm test -w @rbr/engine",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
