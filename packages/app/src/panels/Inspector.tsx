@@ -61,7 +61,8 @@ function YarnPicker({ value, onPick }: { value: string; onPick(hex: string): voi
   );
 }
 
-const KEYS = <p className="meta keys">Shift-click to pick several · F fuse · M move · T turn · Del remove · Ctrl+Z undo</p>;
+const KEYS = <p className="meta keys">F fuse · M move · T turn · Del remove · Ctrl+Z undo</p>;
+const SHIFT_TIP = <p className="tip"><kbd>Shift</kbd> + click to select several shapes, then fuse them into one piece.</p>;
 
 export function Inspector() {
   const ed = useEditor();
@@ -70,7 +71,8 @@ export function Inspector() {
     return (
       <section className="paper card inspector" aria-label="Selection">
         <span className="eyebrow">Nothing selected</span>
-        <p className="meta">Click a shape to change it. Shift-click shapes to pick several, line them up with Move and Turn, then fuse them into one piece. Drag the stage to look around, scroll to zoom.</p>
+        <p className="meta">Click a shape to change it. Drag the stage to look around, scroll to zoom.</p>
+        {SHIFT_TIP}
         {KEYS}
       </section>
     );
@@ -87,7 +89,7 @@ function ManyInspector({ ed }: { ed: Editor }) {
   const shapes = selectedShapes(project, selected);
   const fuse = () => {
     const { project: next, id } = fuseShapes(project, shapes.map((s) => s.id), nextPieceId(project));
-    if (id) ed.edit(next, [id]);
+    if (id) { ed.edit(next, [id]); ed.setMulti(false); }
   };
   return (
     <section className="paper card inspector" aria-label="Selection">
@@ -187,7 +189,14 @@ function ShapeInspector({ ed, s }: { ed: Editor; s: Shape }) {
         }} title={partner ? 'Already mirrored' : 'Make a linked copy on the other side'}>Mirror</button>
         <button type="button" className="btn quiet small danger" onClick={() => ed.edit(removeSelection(project, [s.id]), [])}>Remove</button>
       </div>
-      {!piece && <p className="meta">Shift-click another shape to fuse them.</p>}
+      {!piece && SHIFT_TIP}
+      {!piece && (
+        <div className="actions">
+          <button type="button" className="btn small" onClick={() => ed.setMulti(true)} disabled={ed.multi}>
+            {ed.multi ? 'Now click the other shapes…' : 'Fuse with other shapes…'}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

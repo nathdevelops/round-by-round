@@ -21,10 +21,10 @@ function Shortcuts() {
       else if (mod) return;
       else if (k === 'm') ed.setMode('translate');
       else if (k === 't') ed.setMode('rotate');
-      else if (k === 'escape') ed.select(null);
+      else if (k === 'escape') { ed.select(null); ed.setMulti(false); }
       else if (k === 'f' && ed.selected.length > 1) {
         const { project, id } = fuseShapes(ed.project, selectedShapes(ed.project, ed.selected).map((s) => s.id), nextPieceId(ed.project));
-        if (id) ed.edit(project, [id]);
+        if (id) { ed.edit(project, [id]); ed.setMulti(false); }
       } else if ((k === 'delete' || k === 'backspace') && ed.selected.length) {
         e.preventDefault();
         ed.edit(removeSelection(ed.project, ed.selected), []);

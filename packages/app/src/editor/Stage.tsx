@@ -162,10 +162,16 @@ export function Stage() {
           <label title="Move (M)"><input type="radio" name="gizmo" id="gizmo-move" checked={mode === 'translate'} onChange={() => ed.setMode('translate')} />Move</label>
           <label title="Turn (T)"><input type="radio" name="gizmo" id="gizmo-turn" checked={mode === 'rotate'} onChange={() => ed.setMode('rotate')} />Turn</label>
         </div>
+        <button
+          type="button" id="pick-several" className={`btn small ${ed.multi ? '' : 'quiet'}`} aria-pressed={ed.multi}
+          onClick={() => ed.setMulti(!ed.multi)} title="Click shapes to add them to the selection (or hold Shift)"
+        >{ed.multi ? 'Picking several ✓' : 'Pick several'}</button>
       </div>
       {!project.shapes.length && <p className="stage-hint note">drag a shape off the shelf to start</p>}
-      {project.shapes.length > 1 && !project.fused.length && selected.length < 2 && (
-        <p className="stage-hint note">shift-click shapes to pick several, then fuse them</p>
+      {ed.multi ? (
+        <p className="stage-hint note">click each shape you want, then press “Fuse into one piece”</p>
+      ) : project.shapes.length > 1 && selected.length < 2 && (
+        <p className="stage-tip"><kbd>Shift</kbd> + click to select several shapes</p>
       )}
     </div>
   );

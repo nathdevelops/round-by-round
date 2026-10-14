@@ -18,6 +18,8 @@ interface State {
   /** Selected shape ids and fused piece ids. One shape inside a fused piece means "adjust that part". */
   selected: string[];
   mode: GizmoMode;
+  /** "Pick several" is on: plain clicks add shapes to the selection instead of replacing it. */
+  multi: boolean;
 }
 
 type Action =
@@ -26,7 +28,8 @@ type Action =
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'select'; ids: string[] }
-  | { type: 'mode'; mode: GizmoMode };
+  | { type: 'mode'; mode: GizmoMode }
+  | { type: 'multi'; on: boolean };
 
 function settle(s: State): State {
   if (!s.base) return s;
@@ -55,6 +58,8 @@ function reducer(s: State, a: Action): State {
       return keepSelection({ ...settle(s), h: redo(settle(s).h) });
     case 'select':
       return { ...settle(s), selected: a.ids };
+    case 'multi':
+      return { ...s, multi: a.on };
     case 'mode':
       return { ...s, mode: a.mode };
   }
@@ -76,6 +81,7 @@ export interface Editor {
   project: Project;
   selected: string[];
   mode: GizmoMode;
+  multi: boolean;
   canUndo: boolean;
   canRedo: boolean;
   saved: 'saved' | 'pending' | 'unavailable';
@@ -90,13 +96,14 @@ export interface Editor {
   select(id: string | null, add?: boolean): void;
   setSelection(ids: string[]): void;
   setMode(mode: GizmoMode): void;
+  setMulti(on: boolean): void;
 }
 
 const Ctx = createContext<Editor | null>(null);
 
 export function EditorProvider({ children }: { children: ReactNode }) {
   const [s, dispatch] = useReducer(reducer, undefined, () => ({
-    h: historyOf(loadSaved()), base: null, selected: [] as string[], mode: 'translate' as GizmoMode,
+    h: historyOf(loadSaved()), base: null, selected: [] as string[], mode: 'translate' as GizmoMode, multi: false,
   }));
   const [saved, setSaved] = useState<Editor['saved']>('saved');
   const first = useRef(true);
@@ -121,6 +128,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     project,
     selected: s.selected,
     mode: s.mode,
+    multi: s.multi,
     canUndo: s.h.past.length > 0 || !!s.base,
     canRedo: s.h.future.length > 0,
     saved,
@@ -131,11 +139,12 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     redo: () => dispatch({ type: 'redo' }),
     select: (id, add) => dispatch({
       type: 'select',
-      ids: id === null ? [] : add ? (s.selected.includes(id) ? s.selected.filter((x) => x !== id) : [...s.selected, id]) : [id],
+      ids: id === null ? [] : add || s.multi ? (s.selected.includes(id) ? s.selected.filter((x) => x !== id) : [...s.selected, id]) : [id],
     }),
     setSelection: (ids) => dispatch({ type: 'select', ids }),
     setMode: (mode) => dispatch({ type: 'mode', mode }),
-  }), [project, s.selected, s.mode, s.h.past.length, s.h.future.length, s.base, saved]);
+    setMulti: (on) => dispatch({ type: 'multi', on }),
+  }), [project, s.selected, s.mode, s.multi, s.h.past.length, s.h.future.length, s.base, saved]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

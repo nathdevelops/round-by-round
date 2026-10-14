@@ -109,7 +109,7 @@ export function PatternPanel() {
       </div>
 
       <div className="pieces">
-        <span className="eyebrow">Pieces · shift-click to pick several</span>
+        <span className="eyebrow">Pieces</span>
         {summary.length ? (
           <ul className="piece-list">
             {summary.map(({ it, rounds, make }) => (
