@@ -1,0 +1,360 @@
+<title>Little Red Mushroom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a pattern leaflet. Live 3D swatch + gauge on the left (sticky), round-by-round pattern on the right. */
+:root {
+  --paper: #eef0ea;
+  --card: #f8f9f5;
+  --ink: #1f2a24;
+  --muted: #5d6a61;
+  --line: #d3d9cf;
+  --accent: #b23a2b;
+  --inc: #e0a526;
+  --dec: #3d7fa6;
+  --hl: #e6ebe1;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #151a17; --card: #1d2420; --ink: #e5eae2; --muted: #9aa69d; --line: #303a34;
+    --accent: #e0644f; --inc: #f0bd4a; --dec: #6fb0d6; --hl: #26302a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #151a17; --card: #1d2420; --ink: #e5eae2; --muted: #9aa69d; --line: #303a34;
+  --accent: #e0644f; --inc: #f0bd4a; --dec: #6fb0d6; --hl: #26302a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.5 var(--body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+h1 { font: 700 clamp(30px, 5vw, 46px)/1.05 var(--display); letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+h1 span { color: var(--accent); }
+.sub { color: var(--muted); margin: 6px 0 0; max-width: 60ch; }
+.tag { font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); padding: 6px 8px; border-radius: 4px; }
+.grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px; margin-top: 24px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.left { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 860px) { .left { position: static; } }
+.stage { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; }
+canvas { display: block; width: 100%; aspect-ratio: 1 / 1; max-width: 100%; cursor: grab; touch-action: none; }
+canvas:active { cursor: grabbing; }
+.hint { position: absolute; left: 12px; bottom: 10px; font: 11px/1.3 var(--mono); color: var(--muted); pointer-events: none; }
+.legend { position: absolute; right: 12px; top: 10px; display: flex; gap: 10px; font: 11px/1 var(--mono); color: var(--muted); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 500; }
+.controls .full { grid-column: 1 / -1; }
+select, input[type=number] { font: 500 14px var(--body); color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100%; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.controls label.row { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
+.row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.stats div { padding: 10px 4px; }
+.stats b { display: block; font: 600 17px/1.2 var(--mono); font-variant-numeric: tabular-nums; }
+.stats small { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.stats .wide { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+.stats .wide b { font-size: 14px; }
+.right { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.toolbar p { margin: 0; color: var(--muted); font-size: 13px; }
+button { font: 600 13px var(--body); color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+.piece { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 12px; }
+.piece h2 { font: 700 20px/1.2 var(--display); margin: 0; display: flex; align-items: center; gap: 10px; }
+.sw { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); flex: none; }
+.meta { font: 12px var(--mono); color: var(--muted); margin: 4px 0 10px; }
+.note { font-size: 13px; color: var(--muted); margin: 8px 0; }
+ol { list-style: none; margin: 0; padding: 0; }
+li.rnd { display: grid; grid-template-columns: 6.5em minmax(0, 1fr) 3em; gap: 10px; padding: 5px 6px; border-radius: 5px; font: 13px/1.45 var(--mono); cursor: default; }
+li.rnd:hover, li.rnd.on { background: var(--hl); }
+li.rnd .n { color: var(--muted); }
+li.rnd .c { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+li.rnd .blo { display: block; font-family: var(--body); font-size: 12px; color: var(--accent); }
+li.change { font: 600 12px var(--body); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 8px 6px 4px; }
+.k-inc { color: var(--inc); font-weight: 600; } .k-dec { color: var(--dec); font-weight: 600; }
+.assembly ul { margin: 6px 0 0; padding-left: 18px; }
+.assembly li { margin: 4px 0; }
+footer { margin-top: 32px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 12px; max-width: 75ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Little Red <span>Mushroom</span></h1>
+      <p class="sub">A pattern generated from a 3D shape. Change the gauge or size and every round is recalculated from the model.</p>
+    </div>
+    <span class="tag">Prototype · sc in the round</span>
+  </header>
+
+  <div class="grid">
+    <section class="left" aria-label="Preview and gauge">
+      <div class="stage">
+        <canvas id="view" width="900" height="900" aria-label="3D preview of the crocheted mushroom, one dot per stitch"></canvas>
+        <div class="legend" id="legend"><span><i style="background:var(--inc)"></i>inc</span><span><i style="background:var(--dec)"></i>dec</span></div>
+        <div class="hint">Drag to turn · hover a round to find it</div>
+      </div>
+      <div class="controls">
+        <label class="full" for="yarn">Yarn weight
+          <select id="yarn">
+            <option value="24,26">Sport / DK, 2.75 mm hook</option>
+            <option value="20,22" selected>Worsted, 3.5 mm hook</option>
+            <option value="14,16">Chunky, 5 mm hook</option>
+            <option value="custom">Custom gauge</option>
+          </select>
+        </label>
+        <label for="sts">Stitches per 10 cm <input id="sts" type="number" min="10" max="40" step="1" value="20"></label>
+        <label for="rows">Rounds per 10 cm <input id="rows" type="number" min="10" max="44" step="1" value="22"></label>
+        <label class="full" for="size">Size <span id="sizeOut"></span>
+          <input id="size" type="range" min="0.6" max="1.8" step="0.05" value="1">
+        </label>
+        <label class="row full" for="marks"><input id="marks" type="checkbox" checked> Show increases and decreases</label>
+      </div>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <section class="right" aria-label="Pattern">
+      <div class="toolbar">
+        <p>Work in continuous rounds and move your stitch marker up each round.</p>
+        <button id="copy" type="button">Copy pattern</button>
+      </div>
+      <div id="pattern"></div>
+      <div class="piece assembly">
+        <h2>Assembly</h2>
+        <ul id="assembly"></ul>
+      </div>
+      <textarea id="copyFallback" hidden readonly></textarea>
+    </section>
+  </div>
+
+  <footer>Stitch counts come from slicing each piece every round-height along its surface and dividing the circumference by stitch width. Changes are rounded to 0 or a multiple of 6 so every round splits into even repeats, and increases shift on alternate rounds so the cap stays round. Yarn amounts are a rough estimate.</footer>
+</div>
+
+<script>
+/*ENGINE*/
+</script>
+<script>
+/*MUSHROOM*/
+</script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('view'), ctx = canvas.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let state = { yaw: 0.6, pitch: 0.38, built: null, highlight: null, spin: !reduce };
+  const spotPlaces = [[0.25, 0.3], [0.5, 1.6], [0.62, 3.0], [0.42, 4.3], [0.72, 5.4]];
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function rebuild() {
+    const g = Amigurumi.gaugeFromSwatch(+$('sts').value || 20, +$('rows').value || 22);
+    const size = +$('size').value;
+    const { list, dims } = Mushroom.pieces(size);
+    const pieces = list.map((p) => ({ def: p, out: Amigurumi.buildPiece(p, g) }));
+    state.built = { g, size, dims, pieces };
+    renderPattern();
+    renderStats();
+    draw();
+  }
+
+  function esc(s) { return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+  function colorize(t) { return esc(t).replace(/\binc\b/g, '<span class="k-inc">inc</span>').replace(/\bdec\b/g, '<span class="k-dec">dec</span>'); }
+
+  function renderPattern() {
+    const html = state.built.pieces.map(({ def, out }) => {
+      let last = out.lines[0].color.name, rows = '';
+      for (const g of out.grouped) {
+        if (g.color.name !== last) { rows += `<li class="change">Change to ${g.color.name}</li>`; last = g.color.name; }
+        const label = g.from === g.to ? `Rnd ${g.from}` : `Rnds ${g.from}–${g.to}`;
+        rows += `<li class="rnd" data-p="${def.key}" data-a="${g.from}" data-b="${g.to}"><span class="n">${label}</span><span>${g.note ? `<span class="blo">${g.note}</span>` : ''}${colorize(g.text)}</span><span class="c">${g.count}</span></li>`;
+      }
+      return `<article class="piece"><h2><span class="sw" style="background:${def.color.hex}"></span>${def.name}</h2>
+        <div class="meta">${out.rounds} rounds · ${out.totalStitches * (def.count || 1)} stitches${def.count ? ' total' : ''}</div>
+        <p class="note">${def.start}</p><ol>${rows}</ol><p class="note">${def.finish}</p></article>`;
+    }).join('');
+    $('pattern').innerHTML = html;
+    $('assembly').innerHTML = Mushroom.assembly.map((a) => `<li>${esc(a)}</li>`).join('');
+  }
+
+  function renderStats() {
+    const { dims, pieces, g } = state.built;
+    const mmPerSt = 5.2 * g.stitchW; // rough yarn used by one sc
+    const byColor = {};
+    for (const { def, out } of pieces) for (const l of out.lines) byColor[l.color.name] = (byColor[l.color.name] || 0) + l.count * (def.count || 1);
+    const yarn = Object.entries(byColor).map(([k, v]) => `${Math.ceil(v * mmPerSt / 1000)} m ${k.toLowerCase()}`);
+    const total = Object.values(byColor).reduce((a, b) => a + b, 0);
+    const cells = [
+      [((dims.capH + dims.stemH) / 10).toFixed(1) + ' cm', 'tall'],
+      [(dims.capR * 2 / 10).toFixed(1) + ' cm', 'cap across'],
+      [total.toLocaleString(), 'stitches'],
+      [yarn.join(', ').replace(/, /g, ' · '), 'yarn, approx'],
+    ];
+    $('stats').innerHTML = cells.map(([b, s], i) => `<div class="${i === 3 ? 'wide' : ''}"><b>${b}</b><small>${s}</small></div>`).join('');
+    $('sizeOut').textContent = `(${((dims.capH + dims.stemH) / 10).toFixed(1)} cm tall)`;
+  }
+
+  // ---------- 3D ----------
+  function surfaceItems() {
+    const { pieces, dims, g } = state.built;
+    const items = [];
+    const capLift = dims.stemH - 3;
+    for (const { def, out } of pieces) {
+      if (def.key === 'spot') continue;
+      const L = out.lines;
+      const flip = def.key === 'stem' ? -1 : 1;
+      const dz0 = def.key === 'cap' ? capLift : 0;
+      L.forEach((l, i) => {
+        const a = L[Math.max(0, i - 1)], b = L[Math.min(L.length - 1, i + 1)];
+        let tr = b.r - a.r, tz = b.z - a.z; const tl = Math.hypot(tr, tz) || 1; tr /= tl; tz /= tl;
+        const nr = -tz * flip, nz = tr * flip;
+        const stag = i % 2 ? 0.5 : 0;
+        const N = l.count;
+        // the first rounds sit on a small circle; give them at least some radius
+        const r = Math.max(l.r, g.stitchW * N / (2 * Math.PI) * 0.9);
+        for (let j = 0; j < N; j++) {
+          const th = 2 * Math.PI * (j + stag) / N;
+          items.push({ x: r * Math.cos(th), y: r * Math.sin(th), z: l.z + dz0,
+            nx: nr * Math.cos(th), ny: nr * Math.sin(th), nz,
+            color: l.color.hex, kind: l.marks[j] || 'sc', piece: def.key, n: l.n });
+        }
+      });
+    }
+    // spots: discs laid on the dome
+    const cap = pieces.find((p) => p.def.key === 'cap').out.lines;
+    const domeRounds = cap.filter((l) => l.color.name === 'Red');
+    spotPlaces.forEach(([f, th], si) => {
+      const i = Math.max(1, Math.min(domeRounds.length - 2, Math.round(f * (domeRounds.length - 1))));
+      const l = domeRounds[i], a = domeRounds[i - 1], b = domeRounds[i + 1];
+      let tr = b.r - a.r, tz = b.z - a.z; const tl = Math.hypot(tr, tz) || 1; tr /= tl; tz /= tl;
+      const c = Math.cos(th), s = Math.sin(th);
+      const n = [-tz * c, -tz * s, tr], t1 = [tr * c, tr * s, tz], t2 = [-s, c, 0];
+      const lift = 1.6;
+      const p = [l.r * c + n[0] * lift, l.r * s + n[1] * lift, l.z + capLift + n[2] * lift];
+      items.push({ spot: true, p, n, t1, t2, R: dims.spotR, piece: 'spot', x: p[0], y: p[1], z: p[2], nx: n[0], ny: n[1], nz: n[2], id: si });
+    });
+    return items;
+  }
+
+  function draw() {
+    if (!state.built) return;
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const { dims, g } = state.built;
+    const cy = Math.cos(state.yaw), sy = Math.sin(state.yaw), cp = Math.cos(state.pitch), sp = Math.sin(state.pitch);
+    const zc = (dims.stemH + dims.capH) / 2 + 4;
+    const extent = Math.max(dims.capR * 2.3, dims.stemH + dims.capH + 20);
+    const scale = (W * 0.86) / extent;
+    const view = [0, -cp, sp]; // direction toward camera after rotation, in camera space
+    const light = norm([-0.5, -0.8, 0.9]);
+    function rot(x, y, z) {
+      const x1 = x * cy - y * sy, y1 = x * sy + y * cy; // yaw around z
+      const y2 = y1 * cp - (z) * sp, z2 = y1 * sp + z * cp; // pitch around x
+      return [x1, y2, z2];
+    }
+    function proj(x, y, z) {
+      const [rx, ry, rz] = rot(x, y, z - zc);
+      return [W / 2 + rx * scale, H / 2 - rz * scale, ry];
+    }
+    const items = surfaceItems();
+    const drawn = [];
+    for (const it of items) {
+      const [nx, ny, nz] = rot(it.nx, it.ny, it.nz);
+      const facing = -ny; // camera looks along +y in camera space
+      if (facing < -0.05) continue;
+      const [px, py, depth] = proj(it.x, it.y, it.z);
+      const shade = 0.58 + 0.42 * Math.max(0, nx * light[0] + -ny * light[1] * -1 + nz * light[2]);
+      drawn.push({ it, px, py, depth, shade, facing });
+    }
+    drawn.sort((a, b) => b.depth - a.depth);
+    const showMarks = $('marks').checked;
+    const hl = state.highlight;
+    const rad = g.stitchW * scale * 0.62;
+    const incC = css('--inc'), decC = css('--dec');
+    for (const d of drawn) {
+      const it = d.it;
+      const on = !hl || (hl.p === it.piece && (it.spot || (it.n >= hl.a && it.n <= hl.b)));
+      ctx.globalAlpha = on ? 1 : 0.28;
+      if (it.spot) {
+        ctx.beginPath();
+        for (let k = 0; k <= 18; k++) {
+          const ph = (k / 18) * Math.PI * 2;
+          const q = [0, 1, 2].map((m) => it.p[m] + it.R * (Math.cos(ph) * it.t1[m] + Math.sin(ph) * it.t2[m]));
+          const [x, y] = proj(q[0], q[1], q[2]);
+          k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.fillStyle = shadeHex('#f4efe6', d.shade);
+        ctx.fill();
+        continue;
+      }
+      let col = it.color;
+      if (showMarks && it.kind === 'inc') col = incC;
+      if (showMarks && it.kind === 'dec') col = decC;
+      ctx.fillStyle = shadeHex(col, d.shade);
+      const sq = 0.55 + 0.45 * Math.min(1, d.facing * 1.4);
+      ctx.beginPath();
+      ctx.ellipse(d.px, d.py, rad, rad * (0.75 + 0.25 * sq), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+      ctx.lineWidth = Math.max(0.6, rad * 0.12);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function norm(v) { const l = Math.hypot(...v); return v.map((x) => x / l); }
+  function shadeHex(hex, k) {
+    hex = hex.replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+    const n = parseInt(hex, 16);
+    const f = (c) => Math.max(0, Math.min(255, Math.round(c * k)));
+    return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+  }
+
+  // ---------- interaction ----------
+  let drag = null;
+  canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, yaw: state.yaw, pitch: state.pitch }; state.spin = false; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    state.yaw = drag.yaw + (e.clientX - drag.x) * 0.01;
+    state.pitch = Math.max(-0.3, Math.min(1.3, drag.pitch + (e.clientY - drag.y) * 0.008));
+    draw();
+  });
+  canvas.addEventListener('pointerup', () => { drag = null; });
+  $('pattern').addEventListener('mouseover', (e) => {
+    const li = e.target.closest('li.rnd');
+    const next = li ? { p: li.dataset.p, a: +li.dataset.a, b: +li.dataset.b } : null;
+    if (JSON.stringify(next) !== JSON.stringify(state.highlight)) { state.highlight = next; draw(); }
+  });
+  $('pattern').addEventListener('mouseleave', () => { state.highlight = null; draw(); });
+  $('yarn').addEventListener('change', () => {
+    const v = $('yarn').value;
+    if (v !== 'custom') { const [s, r] = v.split(','); $('sts').value = s; $('rows').value = r; }
+    rebuild();
+  });
+  for (const id of ['sts', 'rows']) $(id).addEventListener('input', () => { $('yarn').value = 'custom'; rebuild(); });
+  $('size').addEventListener('input', rebuild);
+  $('marks').addEventListener('change', draw);
+  $('copy').addEventListener('click', () => {
+    const { pieces, g } = state.built;
+    const text = ['Little Red Mushroom', `Gauge: ${$('sts').value} sc x ${$('rows').value} rounds = 10 cm`, '',
+      ...pieces.map(({ out }) => Amigurumi.formatPiece(out) + '\n'), 'ASSEMBLY', ...Mushroom.assembly.map((a) => '- ' + a)].join('\n');
+    const done = () => { $('copy').textContent = 'Copied'; setTimeout(() => ($('copy').textContent = 'Copy pattern'), 1600); };
+    const fallback = () => { const t = $('copyFallback'); t.hidden = false; t.value = text; t.style.width = '100%'; t.style.height = '12em'; t.select(); $('copy').textContent = 'Select and copy below'; };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (_) { fallback(); }
+  });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+  new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  function tick() {
+    if (state.spin) { state.yaw += 0.004; draw(); }
+    requestAnimationFrame(tick);
+  }
+  rebuild();
+  requestAnimationFrame(tick);
+})();
+</script>

@@ -1,0 +1,560 @@
+<title>Round by Round</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: workbench of three panels (profile, preview, pattern) that stacks on narrow screens */
+:root {
+  --paper: #f3f6f5; --panel: #ffffff; --ink: #1d2928; --muted: #5a6967; --line: #d6dfdd;
+  --accent: #0e7468; --accent-soft: #dcefeb; --inc: #2f9e6f; --dec: #3d6fd6;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #121817; --panel: #1a2221; --ink: #e4eeec; --muted: #9aaba8; --line: #2b3735;
+  --accent: #3cc7b5; --accent-soft: #173733; --inc: #4cc28f; --dec: #7aa0f0; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #121817; --panel: #1a2221; --ink: #e4eeec; --muted: #9aaba8; --line: #2b3735;
+  --accent: #3cc7b5; --accent-soft: #173733; --inc: #4cc28f; --dec: #7aa0f0; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--paper); color: var(--ink); font: 15px/1.5 var(--body); }
+.wrap { max-width: 1320px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: flex; flex-direction: column; gap: 16px }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px }
+h1 { font: 700 30px/1.1 var(--display); margin: 0; letter-spacing: -0.01em }
+header p { margin: 0; color: var(--muted) }
+.proto { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 2px 8px }
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0 }
+.field > span, .label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700 }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden }
+.seg button { font: inherit; border: 0; background: transparent; color: var(--ink); padding: 6px 12px; cursor: pointer }
+.seg button + button { border-left: 1px solid var(--line) }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 700 }
+select, input[type=range] { font: inherit; color: var(--ink); background: var(--panel); accent-color: var(--accent) }
+select { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px }
+.check { display: flex; gap: 6px; align-items: center; font-size: 14px; cursor: pointer }
+.check input { accent-color: var(--accent) }
+.rangev { font: 600 13px var(--mono); font-variant-numeric: tabular-nums }
+button:focus-visible, select:focus-visible, input:focus-visible, circle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.grid { display: grid; gap: 16px; grid-template-columns: 1fr; align-items: start }
+@media (min-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) } .patpanel { grid-column: 1 / -1 } }
+@media (min-width: 1180px) { .grid { grid-template-columns: 320px minmax(0, 1fr) 400px } .patpanel { grid-column: auto } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0 }
+.card h2 { font: 700 17px var(--display); margin: 0 }
+.cardhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap }
+.hint { font-size: 13px; color: var(--muted); margin: 0 }
+#editor { width: 100%; height: auto; touch-action: none; user-select: none; background: var(--paper); border-radius: 8px }
+.btn { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 5px 10px; cursor: pointer }
+.btn:hover { border-color: var(--accent); color: var(--accent) }
+.viewer { position: relative; width: 100%; aspect-ratio: 1 / 1; max-width: 100%; border-radius: 8px; background: radial-gradient(circle at 50% 40%, var(--panel), var(--paper)); overflow: hidden; cursor: grab }
+.viewer canvas { display: block; width: 100%; height: 100% }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted) }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px }
+.stat { border-top: 1px solid var(--line); padding-top: 6px; min-width: 0 }
+.stat b { display: block; font: 700 18px var(--display); font-variant-numeric: tabular-nums }
+.stat span { font-size: 12px; color: var(--muted) }
+.part { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px }
+.part h3 { margin: 0; font: 700 15px var(--display); display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: .06em }
+.sw { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--line) }
+ol.rows { list-style: none; margin: 0; padding: 0; font: 13px/1.55 var(--mono) }
+ol.rows li { display: grid; grid-template-columns: 6.6em minmax(0, 1fr) auto; gap: 8px; padding: 2px 6px; border-radius: 4px }
+ol.rows li:nth-child(odd) { background: color-mix(in srgb, var(--paper) 70%, transparent) }
+ol.rows .lb { font-weight: 600 }
+ol.rows .ct { color: var(--muted); font-variant-numeric: tabular-nums }
+ol.rows li.inc .lb { color: var(--inc) } ol.rows li.dec .lb { color: var(--dec) }
+ul.tips { margin: 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px }
+.foot { font-size: 13px; color: var(--muted); max-width: 70ch }
+@media (max-width: 480px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Round by Round</h1>
+    <span class="proto">Prototype</span>
+    <p>Shape a part by its side profile. The pattern rewrites itself as you drag.</p>
+  </header>
+
+  <div class="toolbar">
+    <div class="field"><span>Project</span>
+      <div class="seg" id="presets"></div></div>
+    <label class="field"><span>Yarn and hook</span>
+      <select id="yarn">
+        <option value="0.5,0.45">Worsted, 3.5 mm hook</option>
+        <option value="0.42,0.38">DK, 3 mm hook</option>
+        <option value="0.75,0.65">Chunky, 5 mm hook</option>
+      </select></label>
+    <label class="field"><span>Size <b class="rangev" id="sizev"></b></span>
+      <input type="range" id="size" min="60" max="250" step="5" value="130"></label>
+    <label class="field"><span>Stuffing stretch <b class="rangev" id="stretchv"></b></span>
+      <input type="range" id="stretch" min="0" max="20" step="1" value="10"></label>
+    <label class="check"><input type="checkbox" id="mult6" checked> Keep counts in multiples of 6</label>
+    <label class="check"><input type="checkbox" id="balls" checked> Show each stitch</label>
+    <label class="check"><input type="checkbox" id="shade"> Color the shaping</label>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="cardhead"><h2>Profile</h2><div class="seg" id="parttabs"></div></div>
+      <svg id="editor" viewBox="0 0 320 330" aria-label="Side profile editor"></svg>
+      <div class="cardhead">
+        <p class="hint">Drag a point to reshape. Double-click a point to remove it. Dots mark each round.</p>
+        <button class="btn" id="addpt" type="button">Add point</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="cardhead"><h2>Crocheted preview</h2><span class="hint">Drag to turn</span></div>
+      <div class="viewer" id="viewer"></div>
+      <div class="legend" id="legend" hidden><span><i style="background:var(--inc)"></i>Increase</span><span><i style="background:var(--dec)"></i>Decrease</span><span>Unmarked: plain sc</span></div>
+      <p class="hint">Rebuilt from the stitch counts, one ball per stitch, so this is what the pattern will actually make.</p>
+    </section>
+
+    <section class="card patpanel">
+      <div class="cardhead"><h2>Pattern</h2><button class="btn" id="copy" type="button">Copy pattern</button></div>
+      <div class="stats" id="stats"></div>
+      <div id="pattern"></div>
+    </section>
+  </div>
+  <p class="foot">Single crochet in continuous spiral rounds, US terms. Yarn presets and the yarn estimate are rough; measure a swatch for real gauge. Example shapes are starting points, not tested patterns.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---- Pattern core: profile -> rounds -> written pattern ----
+const TAU = Math.PI * 2;
+
+// Catmull-Rom through control points, sampled densely
+function smoothCurve(pts, per = 20) {
+  const out = [];
+  const P = (i) => pts[Math.max(0, Math.min(pts.length - 1, i))];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+    for (let t = 0; t < 1; t += 1 / per) {
+      const t2 = t * t, t3 = t2 * t;
+      const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push({ r: Math.max(0, f(p0.r, p1.r, p2.r, p3.r)), z: f(p0.z, p1.z, p2.z, p3.z) });
+    }
+  }
+  out.push({ ...pts[pts.length - 1] });
+  return out;
+}
+
+function withArc(curve) {
+  let s = 0;
+  return curve.map((p, i) => {
+    if (i) s += Math.hypot(p.r - curve[i - 1].r, p.z - curve[i - 1].z);
+    return { ...p, s };
+  });
+}
+
+function pointAt(c, s) {
+  if (s <= 0) return c[0];
+  for (let i = 1; i < c.length; i++) {
+    if (c[i].s >= s) {
+      const a = c[i - 1], b = c[i], t = (s - a.s) / (b.s - a.s || 1);
+      return { r: a.r + (b.r - a.r) * t, z: a.z + (b.z - a.z) * t, s };
+    }
+  }
+  return c[c.length - 1];
+}
+
+function snapCount(target, prev, mult6, minCount) {
+  const lo = prev ? Math.ceil(prev / 2) : minCount, hi = prev ? prev * 2 : 99999;
+  let n = Math.max(minCount, Math.round(target));
+  if (mult6) n = Math.max(6, Math.round(n / 6) * 6);
+  n = Math.min(hi, Math.max(lo, n));
+  if (mult6 && n % 6) { // re-snap inside the allowed band
+    const up = Math.ceil(n / 6) * 6, dn = Math.floor(n / 6) * 6;
+    n = up <= hi ? up : dn >= lo && dn >= 6 ? dn : n;
+  }
+  return Math.max(minCount, n);
+}
+
+// Returns rounds with stitch counts plus reconstructed geometry
+function computeRounds(part, gauge, scale, mult6) {
+  const pts = part.points.map((p) => ({ r: p.r * scale, z: p.z * scale }));
+  const curve = withArc(smoothCurve(pts));
+  const L = curve[curve.length - 1].s;
+  const effW = gauge.w * (1 + gauge.stretch);
+  const closed = pts[pts.length - 1].r < 0.12 * scale;
+  let n = Math.max(3, Math.round(L / gauge.h));
+  const hh = L / n;
+  const rounds = [];
+  let prev = 0;
+  const bodyN = closed ? n - 1 : n;
+  for (let k = 1; k <= bodyN; k++) {
+    const p = pointAt(curve, k * hh);
+    const target = (TAU * p.r) / effW;
+    const count = k === 1 ? 6 : snapCount(target, prev, mult6, 6);
+    rounds.push({ count, prev, z: p.z, rTarget: p.r, s: k * hh });
+    prev = count;
+  }
+  if (closed) { // decrease down to 6, spread over the last stretch of surface
+    const last = rounds[rounds.length - 1];
+    const extra = [];
+    let c = prev;
+    while (c > 6) {
+      let nx = Math.max(6, Math.ceil(c / 2));
+      if (mult6 && c % 6 === 0) nx = Math.max(6, Math.ceil(nx / 6) * 6);
+      if (nx >= c) nx = c - 6;
+      extra.push((c = nx));
+    }
+    extra.forEach((cnt, i) => {
+      const s = last.s + ((L - last.s) * (i + 1)) / (extra.length + 1);
+      const p = pointAt(curve, s);
+      rounds.push({ count: cnt, prev: rounds[rounds.length - 1].count, z: p.z, rTarget: p.r, s });
+    });
+  }
+  rounds.forEach((r, i) => {
+    r.n = i + 1;
+    r.d = i === 0 ? 0 : r.count - r.prev;
+    r.r = (r.count * effW) / TAU; // radius the crocheted round will actually have
+  });
+  return { rounds, closed, rowH: hh, length: L, curve, pts };
+}
+
+const rep = (grp, times) => (times === 1 ? grp : grp.includes(',') ? `(${grp}) x${times}` : `${grp} x${times}`);
+const scTxt = (g) => (g === 0 ? '' : g === 1 ? 'sc, ' : `${g} sc, `);
+
+function spread(P, units, kind, stagger) {
+  const plain = kind === 'inc' ? P - units : P - 2 * units;
+  const gaps = [];
+  for (let i = 0; i < units; i++) gaps.push(Math.floor(((i + 1) * plain) / units) - Math.floor((i * plain) / units));
+  const allSame = gaps.every((g) => g === gaps[0]);
+  if (allSame) {
+    const g = gaps[0];
+    if (stagger && g >= 2 && units > 1) {
+      const a = Math.floor(g / 2), b = g - a;
+      return `${a === 1 ? 'sc' : a + ' sc'}, ${kind}, ${rep(scTxt(g) + kind, units - 1)}, ${b === 1 ? 'sc' : b + ' sc'}`;
+    }
+    return rep(scTxt(g) + kind, units);
+  }
+  for (let p = 2; p <= 3; p++) {
+    if (units % p) continue;
+    if (gaps.every((g, i) => g === gaps[i % p])) {
+      const grp = gaps.slice(0, p).map((g) => scTxt(g) + kind).join(', ');
+      return rep(grp, units / p);
+    }
+  }
+  const q = Math.min(...gaps), big = gaps.filter((g) => g > q).length;
+  return `${rep(scTxt(q) + kind, units - big)}, ${rep(scTxt(q + 1) + kind, big)}`;
+}
+
+function roundText(r, incIdx) {
+  if (r.n === 1) return '6 sc in a magic ring';
+  if (r.d === 0) return 'sc in each st around';
+  if (r.d > 0) return spread(r.prev, r.d, 'inc', incIdx % 2 === 1);
+  return spread(r.prev, -r.d, 'dec', false);
+}
+
+function patternLines(rounds) {
+  const lines = [];
+  let incIdx = 0;
+  for (let i = 0; i < rounds.length; i++) {
+    const r = rounds[i];
+    if (r.d === 0 && r.n > 1) {
+      let j = i;
+      while (j + 1 < rounds.length && rounds[j + 1].d === 0) j++;
+      lines.push({ label: j > i ? `Rnds ${r.n}–${rounds[j].n}` : `Rnd ${r.n}`, text: 'sc in each st around', count: r.count, kind: 'plain', from: r.n, to: rounds[j].n });
+      i = j;
+      continue;
+    }
+    if (r.d > 0) incIdx++;
+    lines.push({ label: `Rnd ${r.n}`, text: roundText(r, incIdx), count: r.count, kind: r.n === 1 ? 'start' : r.d > 0 ? 'inc' : 'dec', from: r.n, to: r.n });
+  }
+  return lines;
+}
+
+function partTips(part, res, gauge) {
+  const tips = [];
+  const R = res.rounds;
+  const maxIdx = R.reduce((m, r, i) => (r.count > R[m].count ? i : m), 0);
+  if (Math.abs(res.rowH - gauge.h) / gauge.h > 0.08)
+    tips.push(`Rows were stretched to ${res.rowH.toFixed(2)} cm tall to fit the shape evenly. Your gauge says ${gauge.h} cm, so the finished piece may come out slightly ${res.rowH > gauge.h ? 'shorter' : 'taller'}.`);
+  const after = R[maxIdx + 1];
+  if (after && after.d <= -Math.max(5, after.prev * 0.15))
+    tips.push(`Work Rnd ${after.n} in back loops only. The surface turns sharply there, and BLO gives a crisp edge.`);
+  if (R.some((r) => r.d < 0)) tips.push('Use the invisible decrease (front loops only) so decreases blend in.');
+  if (part.face) {
+    const eye = R[Math.round(R.length * 0.55)] || R[R.length - 1];
+    tips.push(`Insert safety eyes between Rnds ${eye.n} and ${eye.n + 1}, about ${Math.max(3, Math.round(eye.count * 0.2))} sts apart, before stuffing.`);
+  }
+  if (res.closed) {
+    const st = R.find((r, i) => i > maxIdx && r.count <= Math.max(18, R[maxIdx].count / 2));
+    if (st) tips.push(`Start stuffing around Rnd ${st.n} and keep adding as the opening closes.`);
+    tips.push('Fasten off, weave the tail through the front loops of the last 6 sts, and pull closed.');
+  } else {
+    tips.push('Fasten off, leaving a long tail for sewing. Stuff firmly before attaching.');
+  }
+  if (part.note) tips.push(part.note);
+  return tips;
+}
+
+
+
+
+const sphere = []; for (let i = 0; i <= 8; i++) { const a = Math.PI * i / 8; sphere.push({ r: +(3 * Math.sin(a)).toFixed(3), z: +(3 - 3 * Math.cos(a)).toFixed(3) }); }
+const PRESETS = {
+  mushroom: { name: 'Mushroom', size: 130, parts: [
+    { id: 'cap', name: 'Cap', color: '#c8323c', note: 'Embroider or sew on white felt spots before you close the cap.',
+      points: [{r:0,z:4.6},{r:1.7,z:4.45},{r:2.9,z:3.95},{r:3.6,z:3.15},{r:3.65,z:2.6},{r:2.8,z:2.35},{r:1.5,z:2.3},{r:0,z:2.3}] },
+    { id: 'stem', name: 'Stem', color: '#efe4cc', face: true,
+      points: [{r:0,z:0},{r:1.3,z:0.02},{r:1.6,z:0.3},{r:1.7,z:1.0},{r:1.55,z:1.8},{r:1.35,z:2.4}] } ],
+    assembly: 'Stuff the Stem firmly and sew its open top to the center of the Cap underside.' },
+  strawberry: { name: 'Strawberry', size: 130, parts: [
+    { id: 'berry', name: 'Berry', color: '#d8343f', face: true, note: 'Embroider seeds with yellow yarn before stuffing.',
+      points: [{r:0,z:0},{r:0.9,z:0.6},{r:1.8,z:1.8},{r:2.3,z:3.0},{r:2.2,z:3.7},{r:1.4,z:4.1},{r:0,z:4.2}] } ],
+    assembly: 'The leaves are a flat star, which this prototype does not generate yet. Crochet a small green star and sew it on top.' },
+  ball: { name: 'Plain ball', size: 100, parts: [ { id: 'ball', name: 'Ball', color: '#5b8def', points: sphere } ],
+    assembly: 'Sanity check: a 6 cm ball should come out close to the classic sphere pattern that grows by 6 stitches a round.' },
+};
+
+const state = { preset: 'mushroom', parts: null, sel: 0, view: null };
+const $ = (id) => document.getElementById(id);
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const gauge = () => { const [w, h] = $('yarn').value.split(',').map(Number); return { w, h, stretch: +$('stretch').value / 100 }; };
+const scale = () => +$('size').value / 100;
+
+function loadPreset(key) {
+  state.preset = key; state.parts = clone(PRESETS[key].parts); state.sel = 0;
+  $('size').value = PRESETS[key].size;
+  let rmax = 0, zmin = 1e9, zmax = -1e9;
+  state.parts.forEach(p => p.points.forEach(q => { rmax = Math.max(rmax, q.r); zmin = Math.min(zmin, q.z); zmax = Math.max(zmax, q.z); }));
+  const pad = Math.max(rmax, zmax - zmin) * 0.18;
+  state.view = { rmax: rmax + pad, zmin: zmin - pad * 0.6, zmax: zmax + pad * 0.6 };
+  renderTabs(); update();
+}
+
+function renderTabs() {
+  $('presets').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<button type="button" data-k="${k}" aria-pressed="${k === state.preset}">${p.name}</button>`).join('');
+  $('parttabs').innerHTML = state.parts.map((p, i) => `<button type="button" data-i="${i}" aria-pressed="${i === state.sel}">${p.name}</button>`).join('');
+}
+$('presets').addEventListener('click', e => { const b = e.target.closest('button'); if (b) loadPreset(b.dataset.k); });
+$('parttabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { state.sel = +b.dataset.i; renderTabs(); drawEditor(); } });
+
+// ---------- results ----------
+let results = [];
+function compute() {
+  const g = gauge(), s = scale(), m6 = $('mult6').checked;
+  results = state.parts.map(p => { const res = computeRounds(p, g, s, m6); return { part: p, res, lines: patternLines(res.rounds), tips: partTips(p, res, g) }; });
+}
+
+function update() {
+  $('sizev').textContent = $('size').value + '%';
+  $('stretchv').textContent = $('stretch').value + '%';
+  $('legend').hidden = !$('shade').checked;
+  compute(); drawEditor(); renderPattern(); build3D();
+}
+['yarn', 'size', 'stretch', 'mult6', 'shade', 'balls'].forEach(id => $(id).addEventListener('input', update));
+
+// ---------- profile editor ----------
+const NS = 'http://www.w3.org/2000/svg';
+const EW = 320, EH = 330;
+function mapper() {
+  const v = state.view, k = Math.min((EW - 30) / (2 * v.rmax), (EH - 20) / (v.zmax - v.zmin));
+  const cx = EW / 2, cy = EH / 2, zc = (v.zmin + v.zmax) / 2;
+  return { k, X: r => cx + r * k, Y: z => cy - (z - zc) * k, R: x => (x - cx) / k, Z: y => zc - (y - cy) / k };
+}
+function drawEditor() {
+  const svg = $('editor'), m = mapper(), s = scale();
+  let h = `<line x1="${EW / 2}" y1="6" x2="${EW / 2}" y2="${EH - 6}" stroke="var(--line)" stroke-dasharray="4 4"/>`;
+  results.forEach((R, i) => {
+    const sel = i === state.sel, c = R.res.curve;
+    const right = c.map(p => `${m.X(p.r / s).toFixed(1)},${m.Y(p.z / s).toFixed(1)}`);
+    const left = c.slice().reverse().map(p => `${m.X(-p.r / s).toFixed(1)},${m.Y(p.z / s).toFixed(1)}`);
+    h += `<polygon points="${right.concat(left).join(' ')}" fill="${R.part.color}" fill-opacity="${sel ? 0.35 : 0.14}" stroke="${sel ? 'var(--ink)' : 'var(--muted)'}" stroke-width="${sel ? 1.4 : 0.8}" stroke-linejoin="round"/>`;
+    if (sel) R.res.rounds.forEach(r => { h += `<circle cx="${m.X(r.rTarget / s)}" cy="${m.Y(r.z / s)}" r="1.8" fill="var(--muted)"/>`; });
+  });
+  const P = state.parts[state.sel];
+  P.points.forEach((p, j) => {
+    const locked = j === 0;
+    h += `<circle class="h" data-j="${j}" cx="${m.X(p.r)}" cy="${m.Y(p.z)}" r="7" fill="var(--panel)" stroke="var(--accent)" stroke-width="${locked ? 3 : 2}" style="cursor:${locked ? 'ns-resize' : 'grab'}" tabindex="0" aria-label="Point ${j + 1}${locked ? ', start of round 1' : ''}"/>`;
+  });
+  svg.innerHTML = h;
+}
+let drag = null, raf = 0;
+function svgPoint(e) { const r = $('editor').getBoundingClientRect(); return { x: (e.clientX - r.left) * EW / r.width, y: (e.clientY - r.top) * EH / r.height }; }
+$('editor').addEventListener('pointerdown', e => {
+  const c = e.target.closest('circle.h'); if (!c) return;
+  drag = +c.dataset.j; $('editor').setPointerCapture(e.pointerId); e.preventDefault();
+});
+$('editor').addEventListener('pointermove', e => {
+  if (drag === null) return;
+  const m = mapper(), q = svgPoint(e), p = state.parts[state.sel].points[drag], v = state.view;
+  p.z = Math.min(v.zmax, Math.max(v.zmin, m.Z(q.y)));
+  if (drag !== 0) p.r = Math.min(v.rmax, Math.max(0, m.R(q.x)));
+  if (!raf) raf = requestAnimationFrame(() => { raf = 0; update(); });
+});
+const endDrag = () => { drag = null; };
+$('editor').addEventListener('pointerup', endDrag); $('editor').addEventListener('pointercancel', endDrag);
+$('editor').addEventListener('dblclick', e => {
+  const c = e.target.closest('circle.h'); if (!c) return;
+  const pts = state.parts[state.sel].points, j = +c.dataset.j;
+  if (j > 0 && j < pts.length - 1 && pts.length > 3) { pts.splice(j, 1); update(); }
+});
+$('addpt').addEventListener('click', () => {
+  const pts = state.parts[state.sel].points; let best = 0, bl = -1;
+  for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1].r - pts[i].r, pts[i + 1].z - pts[i].z); if (l > bl) { bl = l; best = i; } }
+  pts.splice(best + 1, 0, { r: (pts[best].r + pts[best + 1].r) / 2 + 0.2, z: (pts[best].z + pts[best + 1].z) / 2 });
+  update();
+});
+
+// ---------- pattern ----------
+function renderPattern() {
+  const g = gauge();
+  let zmin = 1e9, zmax = -1e9, rounds = 0, sts = 0;
+  results.forEach(R => { R.res.pts.forEach(p => { zmin = Math.min(zmin, p.z); zmax = Math.max(zmax, p.z); }); rounds += R.res.rounds.length; R.res.rounds.forEach(r => sts += r.count); });
+  const yarnM = sts * 5 * g.w / 100;
+  $('stats').innerHTML = [
+    [`${(zmax - zmin).toFixed(1)} cm`, 'Finished height'], [rounds, 'Rounds'], [sts.toLocaleString(), 'Stitches'], [`≈ ${Math.ceil(yarnM / 5) * 5} m`, 'Yarn, rough']
+  ].map(([b, s]) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`).join('');
+  let h = '';
+  results.forEach(R => {
+    h += `<div class="part"><h3><span class="sw" style="background:${R.part.color}"></span>${R.part.name}</h3><ol class="rows">`;
+    R.lines.forEach(l => { h += `<li class="${l.kind}"><span class="lb">${l.label}</span><span>${l.text}</span><span class="ct">(${l.count})</span></li>`; });
+    h += `</ol><ul class="tips">${R.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>`;
+  });
+  h += `<div class="part"><h3>Assembly</h3><p class="hint" style="color:var(--ink)">${PRESETS[state.preset].assembly}</p></div>`;
+  $('pattern').innerHTML = h;
+}
+function patternText() {
+  const g = gauge(), opt = $('yarn').selectedOptions[0].textContent;
+  let t = `${PRESETS[state.preset].name.toUpperCase()}\n${opt}, gauge ${g.w} cm per st, ${g.h} cm per row. Single crochet, spiral rounds, US terms.\n`;
+  results.forEach(R => { t += `\n${R.part.name.toUpperCase()}\n`; R.lines.forEach(l => t += `${l.label}: ${l.text} (${l.count})\n`); R.tips.forEach(x => t += `- ${x}\n`); });
+  return t + `\nASSEMBLY\n${PRESETS[state.preset].assembly}\n`;
+}
+$('copy').addEventListener('click', async () => {
+  const b = $('copy');
+  try { await navigator.clipboard.writeText(patternText()); b.textContent = 'Copied'; }
+  catch { const r = document.createRange(); r.selectNodeContents($('pattern')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'Selected, press copy'; }
+  setTimeout(() => b.textContent = 'Copy pattern', 1600);
+});
+
+// ---------- 3D preview ----------
+let renderer, scene, camera, group, yaw = 0.6, pitch = 0.25, autoSpin = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+function init3D() {
+  if (!window.THREE) { $('viewer').innerHTML = '<p class="hint" style="padding:16px">The 3D preview could not load. The pattern still works.</p>'; return false; }
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  $('viewer').appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(32, 1, 0.1, 500);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, 0.75));
+  const d = new THREE.DirectionalLight(0xffffff, 0.75); d.position.set(4, 8, 6); scene.add(d);
+  const d2 = new THREE.DirectionalLight(0xffffff, 0.25); d2.position.set(-6, 2, -4); scene.add(d2);
+  new ResizeObserver(resize).observe($('viewer'));
+  let last = null;
+  const v = $('viewer');
+  v.addEventListener('pointerdown', e => { last = [e.clientX, e.clientY]; autoSpin = false; v.setPointerCapture(e.pointerId); v.style.cursor = 'grabbing'; });
+  v.addEventListener('pointermove', e => { if (!last) return; yaw += (e.clientX - last[0]) * 0.01; pitch = Math.max(-1.2, Math.min(1.2, pitch + (e.clientY - last[1]) * 0.008)); last = [e.clientX, e.clientY]; });
+  const up = () => { last = null; v.style.cursor = 'grab'; };
+  v.addEventListener('pointerup', up); v.addEventListener('pointercancel', up);
+  (function loop() { if (autoSpin) yaw += 0.004; place(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+  return true;
+}
+let fit = 10;
+function place() { const r = fit; camera.position.set(Math.sin(yaw) * Math.cos(pitch) * r, Math.sin(pitch) * r, Math.cos(yaw) * Math.cos(pitch) * r); camera.lookAt(0, 0, 0); }
+function resize() { const v = $('viewer'), w = v.clientWidth, h = v.clientHeight; if (!w) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+
+function bumpy(res, rowH) {
+  const R = res.rounds, pts = res.pts;
+  const centers = [{ r: 0, z: pts[0].z, ri: 0 }].concat(R.map((r, i) => ({ r: r.r, z: r.z, ri: i })));
+  if (res.closed) centers.push({ r: 0, z: pts[pts.length - 1].z, ri: R.length - 1 });
+  const dir = Math.sign(pts[pts.length - 1].z - pts[0].z) || 1, amp = 0.13 * rowH, out = [];
+  for (let i = 0; i < centers.length - 1; i++) {
+    const a = centers[i], b = centers[i + 1], tr = b.r - a.r, tz = b.z - a.z, len = Math.hypot(tr, tz) || 1;
+    const nr = dir * tz / len, nz = -dir * tr / len;
+    for (let k = 0; k < 6; k++) {
+      const t = k / 6, wave = 0.5 + 0.5 * Math.cos(2 * Math.PI * t);
+      let r = a.r + tr * t + nr * amp * wave, z = a.z + tz * t + nz * amp * wave;
+      if (i === 0 && k === 0) r = 0;
+      out.push({ r: Math.max(0, r), z, ri: t < 0.5 ? a.ri : b.ri, wave });
+    }
+  }
+  const e = centers[centers.length - 1]; out.push({ r: e.r, z: e.z, ri: e.ri, wave: 1 });
+  return dir < 0 ? out.reverse() : out;
+}
+
+// Per-stitch kinds for one round, in working order (an inc makes 2 stitches, a dec makes 1)
+function stitchKinds(r) {
+  if (r.n === 1 || r.d === 0) return Array(r.count).fill('sc');
+  const inc = r.d > 0, units = Math.abs(r.d), plain = inc ? r.prev - units : r.prev - 2 * units, out = [];
+  for (let i = 0; i < units; i++) {
+    const g = Math.floor(((i + 1) * plain) / units) - Math.floor((i * plain) / units);
+    for (let k = 0; k < g; k++) out.push('sc');
+    if (inc) out.push('inc', 'inc'); else out.push('dec');
+  }
+  return out;
+}
+
+const ballGeo = () => new THREE.SphereGeometry(1, 12, 8);
+function addStitchBalls(R, shade, cInc, cDec) {
+  const res = R.res, rounds = res.rounds, pts = res.pts, g = gauge();
+  const effW = g.w * (1 + g.stretch), rowH = res.rowH;
+  const dir = Math.sign(pts[pts.length - 1].z - pts[0].z) || 1;
+  const centers = [{ r: 0, z: pts[0].z }].concat(rounds.map(r => ({ r: r.r, z: r.z })));
+  if (res.closed) centers.push({ r: 0, z: pts[pts.length - 1].z });
+  const total = rounds.reduce((a, r) => a + r.count, 0);
+  const mesh = new THREE.InstancedMesh(ballGeo(), new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0 }), total);
+  const base = new THREE.Color(R.part.color), c = new THREE.Color(), m = new THREE.Matrix4();
+  const u = new THREE.Vector3(), v = new THREE.Vector3(), n = new THREE.Vector3();
+  const a = effW * 0.56, b = rowH * 0.62, cN = Math.min(a, b) * 0.75;
+  let idx = 0;
+  rounds.forEach((r, i) => {
+    const prev = centers[i], next = centers[Math.min(centers.length - 1, i + 2)];
+    let tr = next.r - prev.r, tz = next.z - prev.z; const tl = Math.hypot(tr, tz) || 1; tr /= tl; tz /= tl;
+    const nr = dir * tz, nz = -dir * tr;
+    const kinds = stitchKinds(r), stag = i % 2 ? 0.5 : 0;
+    for (let j = 0; j < r.count; j++) {
+      const th = TAU * (j + stag) / r.count, sn = Math.sin(th), cs = Math.cos(th);
+      u.set(cs, 0, -sn).multiplyScalar(a);
+      v.set(tr * sn, tz, tr * cs).multiplyScalar(b);
+      n.set(nr * sn, nz, nr * cs).multiplyScalar(cN);
+      m.makeBasis(u, v, n).setPosition(r.r * sn, r.z, r.r * cs);
+      mesh.setMatrixAt(idx, m);
+      c.copy(base);
+      if (shade && kinds[j] === 'inc') c.lerp(cInc, 0.75); else if (shade && kinds[j] === 'dec') c.lerp(cDec, 0.75);
+      c.multiplyScalar(0.92 + ((j * 37 + i * 11) % 9) / 90); // a little yarn variation
+      mesh.setColorAt(idx++, c);
+    }
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  return mesh;
+}
+
+function build3D() {
+  if (!renderer && !init3D()) return;
+  if (group) { scene.remove(group); group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  group = new THREE.Group();
+  const shade = $('shade').checked, balls = $('balls').checked, cs = getComputedStyle(document.documentElement);
+  const cInc = new THREE.Color(cs.getPropertyValue('--inc').trim()), cDec = new THREE.Color(cs.getPropertyValue('--dec').trim());
+  let zmin = 1e9, zmax = -1e9, rmax = 0;
+  results.forEach(R => {
+    const prof = bumpy(R.res, R.res.rowH);
+    prof.forEach(p => { zmin = Math.min(zmin, p.z); zmax = Math.max(zmax, p.z); rmax = Math.max(rmax, p.r); });
+    // in stitch view the smooth surface sits just under the balls as a darker core
+    const inset = balls ? 0.22 * R.res.rowH : 0;
+    const seg = 64, geo = new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(Math.max(0, p.r - inset), p.z)), seg);
+    const base = new THREE.Color(R.part.color), cols = new Float32Array((seg + 1) * prof.length * 3), c = new THREE.Color();
+    for (let i = 0; i <= seg; i++) prof.forEach((p, j) => {
+      const rd = R.res.rounds[p.ri]; c.copy(base);
+      if (balls) c.multiplyScalar(0.55);
+      else {
+        if (shade && rd.n > 1 && rd.d > 0) c.lerp(cInc, 0.6); else if (shade && rd.d < 0) c.lerp(cDec, 0.6);
+        c.multiplyScalar(0.78 + 0.22 * p.wave);
+      }
+      cols.set([c.r, c.g, c.b], (i * prof.length + j) * 3);
+    });
+    geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    group.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, side: THREE.DoubleSide })));
+    if (balls) group.add(addStitchBalls(R, shade, cInc, cDec));
+  });
+  group.position.y = -(zmin + zmax) / 2;
+  scene.add(group);
+  fit = Math.max(zmax - zmin, rmax * 2) * 2.1;
+}
+
+loadPreset('mushroom');
+</script>
