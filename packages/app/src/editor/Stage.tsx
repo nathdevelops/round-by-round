@@ -1,10 +1,12 @@
-import { fusedBounds, pieceOf, shapeHeight, type Project, type ShapeKind, type Vec3 } from '@rbr/engine';
-import { ContactShadows, Line, OrbitControls, TransformControls } from '@react-three/drei';
+import { fusedBounds, pieceOf, shapeHeight, YARN_PRESETS, type Project, type ProjectPlan, type ShapeKind, type Vec3 } from '@rbr/engine';
+import { ContactShadows, Html, Line, OrbitControls, TransformControls } from '@react-three/drei';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Matrix4, Object3D, Plane, Quaternion, Raycaster, Vector2, Vector3 } from 'three';
 import { addShapeOf, isEditingPart, moveShapes, movingShapes, selectedShapes } from '../state/actions';
 import { usePlan } from '../state/plan';
+import { useView } from '../state/view';
+import { StitchBalls, type BallColors } from './StitchBalls';
 import { useEditor } from '../state/editor';
 import { FusedMesh } from './FusedMesh';
 import { ShapeMesh } from './ShapeMesh';
@@ -57,6 +59,44 @@ function CameraFit({ project }: { project: Project }) {
   return null;
 }
 
+/** Shadows only in Model view: stitch balls don't cast them, so the stitch view skips the shadow pass. */
+function ShadowsFor({ on }: { on: boolean }) {
+  const { gl, invalidate } = useThree();
+  useEffect(() => {
+    gl.shadowMap.enabled = on;
+    gl.shadowMap.needsUpdate = true;
+    invalidate();
+  }, [gl, on, invalidate]);
+  return null;
+}
+
+/** How far each sewn piece slides off its host at full explode (cm), added along the chain of hosts. */
+const EXPLODE_CM = 3;
+
+export function explodeOffsets(plan: ProjectPlan, amount: number): Map<string, Vec3> {
+  const out = new Map<string, Vec3>();
+  if (amount <= 0) return out;
+  const byId = new Map(plan.stitches.map((s) => [s.itemId, s]));
+  const at = (id: string, depth = 0): Vec3 => {
+    const hit = out.get(id);
+    if (hit) return hit;
+    const s = byId.get(id);
+    if (!s?.hostId || !s.away || depth > 20) return [0, 0, 0];
+    const h = at(s.hostId, depth + 1);
+    const v: Vec3 = [h[0] + s.away[0] * EXPLODE_CM * amount, h[1] + s.away[1] * EXPLODE_CM * amount, h[2] + s.away[2] * EXPLODE_CM * amount];
+    out.set(id, v);
+    return v;
+  };
+  for (const s of plan.stitches) at(s.itemId);
+  return out;
+}
+
+/** Theme colours for the stitch preview. */
+export function useBallColors(): BallColors {
+  const start = useThemeColor('--coral'), inc = useThemeColor('--moss'), dec = useThemeColor('--slate'), hot = useThemeColor('--rust-deep'), fade = useThemeColor('--paper');
+  return useMemo(() => ({ start, inc, dec, hot, fade }), [start, inc, dec, hot, fade]);
+}
+
 export const SHAPE_DRAG_TYPE = 'application/x-rbr-shape';
 
 const ONE = new Vector3(1, 1, 1);
@@ -83,6 +123,12 @@ export function Stage() {
   // The gizmo drives an invisible pivot; whatever is selected follows it as one block.
   const pivot = useMemo(() => new Object3D(), []);
   const plan = usePlan();
+  const view = useView();
+  const stitchView = view.mode === 'stitches';
+  const ballColors = useBallColors();
+  const offsets = useMemo(() => explodeOffsets(plan, stitchView ? view.explode : 0), [plan, stitchView, view.explode]);
+  const yarn = YARN_PRESETS.find((y) => y.id === project.settings.yarnId) ?? YARN_PRESETS[3]!;
+  const [peekLabel, setPeekLabel] = useState<{ text: string; at: Vec3 } | null>(null);
   const seamColor = useThemeColor('--rust');
   const members = selectedShapes(project, selected);
   const drag = useRef<{ inv: Matrix4; base: Project; ids: string[] } | null>(null);
@@ -158,6 +204,7 @@ export function Stage() {
           shadow-camera-left={-20} shadow-camera-right={20} shadow-camera-top={20} shadow-camera-bottom={-20} shadow-camera-far={60}
         />
         <directionalLight position={[-8, 4, -6]} intensity={0.35} color="#c9d8e8" />
+        {!stitchView && <>
         {loose.map((s) => (
           <ShapeMesh key={s.id} shape={s} selected={selected.includes(s.id)} highlight={highlight} onPick={pick(s.id)} />
         ))}
@@ -179,15 +226,38 @@ export function Stage() {
             dashed dashSize={0.18} gapSize={0.12} depthTest={false} transparent opacity={0.9} renderOrder={2}
           />
         ))}
+        </>}
         {plan.eyes.map((e) => {
           const mm = project.markers.find((m) => m.itemId === e.itemId)?.sizeMm ?? 9;
-          return e.points.map((pt, i) => <Eye key={`${e.itemId}-${i}`} position={pt.position} normal={pt.normal} size={mm / 20} />);
+          const off = offsets.get(e.itemId) ?? [0, 0, 0];
+          return e.points.map((pt, i) => <Eye key={`${e.itemId}-${i}`} position={pt.position.map((v, k) => v + off[k]!) as Vec3} normal={pt.normal} size={mm / 20} />);
         })}
+        {stitchView && (
+          <StitchBalls
+            pieces={plan.stitches} offsets={offsets} ballSize={yarn.gauge.stitchW * 0.42} shaping={view.shaping}
+            colors={ballColors} hover={view.hover}
+            onHover={(hit) => {
+              if (!hit) { view.setHover(null); setPeekLabel(null); return; }
+              view.setHover({ patternId: hit.patternId, from: hit.n, to: hit.n, source: 'stage' });
+              const pc = plan.pieces.find((x) => x.id === hit.patternId);
+              const r = pc?.rounds.rounds[hit.n - 1];
+              const off = offsets.get(hit.itemId) ?? [0, 0, 0];
+              setPeekLabel(pc && r ? { text: `${pc.name} · Rnd ${hit.n} (${r.count})`, at: hit.point.map((v, k) => v + off[k]!) as Vec3 } : null);
+            }}
+            onPick={(id, e) => ed.select(id, e.nativeEvent.shiftKey)}
+          />
+        )}
+        {stitchView && peekLabel && (
+          <Html position={peekLabel.at} center style={{ pointerEvents: 'none' }} zIndexRange={[5, 0]}>
+            <span className="ball-label">{peekLabel.text}</span>
+          </Html>
+        )}
         <primitive object={pivot} />
-        <ContactShadows position={[0, -0.02, 0]} opacity={0.35} scale={40} blur={2.4} far={14} />
+        {!stitchView && <ContactShadows position={[0, -0.02, 0]} opacity={0.35} scale={40} blur={2.4} far={14} />}
         <DropProbe probe={probe} />
         <CameraFit project={project} />
-        {members.length > 0 && (
+        <ShadowsFor on={!stitchView} />
+        {members.length > 0 && !stitchView && (
           <TransformControls
             object={pivot} mode={mode} size={0.8}
             onMouseDown={startDrag} onObjectChange={onGizmoChange}
@@ -197,6 +267,17 @@ export function Stage() {
         <OrbitControls makeDefault target={[0, 2.5, 0]} minDistance={4} maxDistance={60} />
       </Canvas>
       <div className="stage-tools">
+        <div className="seg" role="radiogroup" aria-label="View">
+          <label title="Shapes you move and fuse"><input type="radio" name="view" id="view-model" checked={!stitchView} onChange={() => view.setMode('model')} />Model</label>
+          <label title="One ball per stitch"><input type="radio" name="view" id="view-stitches" checked={stitchView} onChange={() => view.setMode('stitches')} />Stitches</label>
+        </div>
+        {stitchView ? <>
+          <label className="check" htmlFor="shaping"><input type="checkbox" id="shaping" checked={view.shaping} onChange={(e) => view.setShaping(e.target.checked)} />Shaping colours</label>
+          <label className="explode" htmlFor="explode">
+            <span>Explode</span>
+            <input type="range" id="explode" min={0} max={1} step={0.01} value={view.explode} onChange={(e) => view.setExplode(+e.target.value)} />
+          </label>
+        </> : <>
         <div className="seg" role="radiogroup" aria-label="Gizmo">
           <label title="Move (M)"><input type="radio" name="gizmo" id="gizmo-move" checked={mode === 'translate'} onChange={() => ed.setMode('translate')} />Move</label>
           <label title="Turn (T)"><input type="radio" name="gizmo" id="gizmo-turn" checked={mode === 'rotate'} onChange={() => ed.setMode('rotate')} />Turn</label>
@@ -205,9 +286,15 @@ export function Stage() {
           type="button" id="pick-several" className={`btn small ${ed.multi ? '' : 'quiet'}`} aria-pressed={ed.multi}
           onClick={() => ed.setMulti(!ed.multi)} title="Click shapes to add them to the selection (or hold Shift)"
         >{ed.multi ? 'Picking several ✓' : 'Pick several'}</button>
+        </>}
       </div>
+      {stitchView && view.shaping && (
+        <p className="stage-legend" aria-label="Shaping colours">
+          <span><i className="k-start" />magic ring</span><span><i className="k-inc" />increase</span><span><i className="k-dec" />decrease</span>
+        </p>
+      )}
       {!project.shapes.length && <p className="stage-hint note">drag a shape off the shelf to start</p>}
-      {ed.multi ? (
+      {stitchView ? null : ed.multi ? (
         <p className="stage-hint note">click each shape you want, then press “Fuse into one piece”</p>
       ) : project.shapes.length > 1 && selected.length < 2 && (
         <p className="stage-tip"><kbd>Shift</kbd> + click to select several shapes, then fuse or sew</p>

@@ -21,10 +21,11 @@ npm run build   # static site in packages/app/dist
   - `sew.ts`: pieces, what each is sewn onto, safety eyes
   - `assembly.ts`: trims sewn pieces, places seams in host rounds, writes the whole pattern
   - `starters.ts`: Little Red Mushroom and Sitting Bear
+  - `layout.ts`: where each stitch sits on the model, for the stitch preview
 - `packages/app`: Vite + React + React Three Fiber editor
-  - `editor/`: 3D stage, shape meshes, gizmos
+  - `editor/`: 3D stage, shape meshes, gizmos, stitch balls (one shaded point per stitch)
   - `panels/`: shelf, inspector, pattern, top bar
-  - `state/`: project with undo/redo and autosave; the pattern plan
+  - `state/`: project with undo/redo and autosave; the pattern plan; view mode and hovered round
 - Style sheet (approved look and feel): https://claude.ai/artifact/DgJV4Ht3CvfVbTwkCypNZr; tokens live in `packages/app/src/theme.css`
 - `fixtures/`: golden patterns for the starters (`*.pattern.txt`; update with `npx vitest run -u` only when a change is meant), plus test-crochet results
 - `reference/`: the two prototypes this was built from (read-only)

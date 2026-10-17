@@ -8,6 +8,7 @@ import { eyesOf, hostOf, itemOf, listItems, sewnOnto, type Item } from './sew';
 import { shapeProfile } from './shapes';
 import { computeRounds } from './stitches';
 import type { PatternLine, PieceRounds, ProfilePoint, Round } from './types';
+import { layoutStitches, type RoundLayout } from './layout';
 
 /**
  * Turning the scene into pieces to crochet and the instructions that put them together.
@@ -80,6 +81,11 @@ export interface Measured {
   seam?: SeamRing;
   /** True when the piece was trimmed and ends in an open edge. */
   trimmed: boolean;
+  /**
+   * Middle of each round's outline, one per profile point (fused pieces, whose slices
+   * needn't sit on the axis). Shapes are round, so theirs is on the axis.
+   */
+  centers?: Vec3[];
   /** Plain-words problems with how the piece meets its host. */
   issues: string[];
 }
@@ -120,15 +126,15 @@ function trim(track: Track, whole: ProfilePoint[], start: Vec3, axis: Vec3, host
     near.forEach((v, i) => { if (v < near[k]!) k = i; });
     if (near[k]! > 0.25) issues.push(`doesn’t touch ${hostName}. Move it so it sinks in a little.`);
     if (k < n / 2) { flip(); k = n - 1 - k; }
-    return { profile: prof, start, axis, seam: ring(k), trimmed: false, issues };
+    return { profile: prof, start, axis, seam: ring(k), trimmed: false, issues, centers };
   }
   if (covered.every(Boolean)) {
     issues.push(`is hidden inside ${hostName}.`);
-    return { profile: prof, start, axis, trimmed: false, issues };
+    return { profile: prof, start, axis, trimmed: false, issues, centers };
   }
   if (covered[0] && covered[n - 1]) {
     issues.push(`sinks into ${hostName} at both ends, so it can’t be sewn on by one edge.`);
-    return { profile: prof, start, axis, trimmed: false, issues };
+    return { profile: prof, start, axis, trimmed: false, issues, centers };
   }
   if (covered[0]) flip();
   let i = cov.findIndex((c) => c >= 0.5);
@@ -147,7 +153,8 @@ function trim(track: Track, whole: ProfilePoint[], start: Vec3, axis: Vec3, host
   const cut = { r: pts[i - 1]!.r + (pts[i]!.r - pts[i - 1]!.r) * t, z: pts[i - 1]!.z + (pts[i]!.z - pts[i - 1]!.z) * t };
   const profile = [...pts.slice(0, i), cut];
   if (cut.z < 0.6) issues.push(`barely sticks out of ${hostName}.`);
-  return { profile, start, axis, seam: { center: lerp(centers[i - 1]!, centers[i]!, t), normal: axis, radius: cut.r }, trimmed: true, issues };
+  const cutCenter = lerp(centers[i - 1]!, centers[i]!, t);
+  return { profile, start, axis, seam: { center: cutCenter, normal: axis, radius: cut.r }, trimmed: true, issues, centers: [...centers.slice(0, i), cutCenter] };
 }
 
 /** A loose shape, trimmed against its host when it has one. */
@@ -167,7 +174,9 @@ function measureShape(s: Shape, host?: { field: XYZField; name: string }): Measu
     track.near.push(st.near);
     track.centers.push(c);
   }
-  return { ...trim(track, whole, start, axis, host.name), splits: [] };
+  // A shape's rounds are centred on its axis; the sampled centres don't match the whole profile.
+  const { centers: _c, ...t } = trim(track, whole, start, axis, host.name);
+  return { ...t, splits: [] };
 }
 
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
@@ -188,7 +197,7 @@ function measureFused(shapes: Shape[], host?: { shapes: Shape[]; name: string })
   if (!hit) {
     const f = fusedProfile(local, cover ? { cover } : {});
     if (!cover || !host) {
-      hit = { profile: f.profile, start: f.start, axis: f.axis, splits: f.splits, trimmed: false, issues: [] };
+      hit = { profile: f.profile, start: f.start, axis: f.axis, splits: f.splits, trimmed: false, issues: [], centers: f.centers };
     } else {
       const field = fusedFieldXYZ(cover);
       const near = f.profile.map((p, i) => ringStats(f.centers[i]!, f.axis, p.r, field).near);
@@ -208,6 +217,7 @@ function measureFused(shapes: Shape[], host?: { shapes: Shape[]; name: string })
     ...hit,
     start: toWorld(hit.start),
     axis: normalize(rotate(q, hit.axis)),
+    ...(hit.centers ? { centers: hit.centers.map(toWorld) } : {}),
     ...(hit.seam ? { seam: { ...hit.seam, center: toWorld(hit.seam.center), normal: normalize(rotate(q, hit.seam.normal)) } } : {}),
   };
 }
@@ -274,6 +284,19 @@ export interface ProjectPlan {
   eyes: { itemId: string; points: EyesPlan['points'] }[];
   /** Assembly steps, in order. */
   assembly: string[];
+  /** Every piece's stitches on the model, mirrored copies included (for the stitch preview). */
+  stitches: PieceStitches[];
+}
+
+export interface PieceStitches {
+  itemId: string;
+  /** The piece whose pattern these stitches follow (a mirrored copy follows its partner). */
+  patternId: string;
+  color: string;
+  hostId?: string;
+  /** Direction that pulls the piece off its host, for the explode slider. */
+  away?: Vec3;
+  rounds: RoundLayout[];
 }
 
 /** Front of the toy: towards the viewer (+z), across the given axis. Falls back to the top. */
@@ -381,6 +404,7 @@ export function planProject(p: Project): ProjectPlan {
   };
 
   const plans = new Map<string, PiecePlan>();
+  const stitches: PieceStitches[] = [];
   const seams: SeamPlan[] = [];
   const eyes: ProjectPlan['eyes'] = [];
   for (const it of items) {
@@ -388,6 +412,15 @@ export function planProject(p: Project): ProjectPlan {
     if (seam) seams.push(seam);
     const ey = eyesFor(it.id);
     if (ey) eyes.push({ itemId: it.id, points: ey.points });
+    {
+      const { m, rounds } = get(it.id);
+      const h = hostOf(p, it.id);
+      stitches.push({
+        itemId: it.id, patternId: isCopy(it) && it.kind === 'shape' ? it.shape.mirrorOf! : it.id, color: it.color,
+        ...(h ? { hostId: h } : {}), ...(h && m.seam ? { away: scale(m.seam.normal, -1) } : {}),
+        rounds: layoutStitches(m, rounds.rounds),
+      });
+    }
     if (isCopy(it)) continue;
     const { m, rounds } = get(it.id);
     const hostId = hostOf(p, it.id);
@@ -438,7 +471,7 @@ export function planProject(p: Project): ProjectPlan {
     }
     assembly.push(pl.seam.text);
   }
-  return { pieces: order, seams, eyes, assembly };
+  return { pieces: order, seams, eyes, assembly, stitches };
 }
 
 /** The whole pattern as plain text: every piece in making order, then assembly. */
