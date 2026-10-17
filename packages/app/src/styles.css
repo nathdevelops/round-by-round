@@ -93,3 +93,11 @@ kbd { font: 800 11px/1 var(--body); padding: 3px 6px; border-radius: 4px; border
 .tip { padding: 9px 12px; border-left: 3px solid var(--rust); background: color-mix(in srgb, var(--rust) 8%, var(--paper)); font-size: 14px; font-weight: 600; }
 .stage-tip { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); margin: 0; padding: 7px 14px; border-radius: 999px; pointer-events: none;
   background: color-mix(in srgb, var(--paper) 92%, transparent); box-shadow: 0 2px 6px -2px var(--shadow); font-weight: 700; font-size: 14px; white-space: nowrap; }
+.finish { margin: 0; font: italic 14px/1.45 var(--body); color: var(--bark-soft); }
+.seam-note { margin: 0; padding: 10px 12px; border: 1.5px dashed var(--rust); border-radius: 4px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.assembly { display: flex; flex-direction: column; gap: 6px; padding-top: 14px; border-top: 1px dashed var(--heather); }
+.assembly ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.45; }
+.assembly li::marker { font: 700 13px var(--pattern); color: var(--rust); }
+.piece-list li.sewn > .link { padding-left: 14px; }
+.flag { color: var(--rust-deep); }
+.sew-onto .meta { margin: 0; }

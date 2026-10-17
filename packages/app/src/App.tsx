@@ -7,6 +7,7 @@ import { PatternPanel } from './panels/PatternPanel';
 import { Shelf } from './panels/Shelf';
 import { TopBar } from './panels/TopBar';
 import { EditorProvider, useEditor } from './state/editor';
+import { PlanProvider } from './state/plan';
 
 function Shortcuts() {
   const ed = useEditor();
@@ -40,6 +41,7 @@ export function App() {
   return (
     <EditorProvider>
       <Shortcuts />
+      <PlanProvider>
       <div className="app">
         <TopBar />
         <main className="workspace">
@@ -51,6 +53,7 @@ export function App() {
           </aside>
         </main>
       </div>
+      </PlanProvider>
     </EditorProvider>
   );
 }

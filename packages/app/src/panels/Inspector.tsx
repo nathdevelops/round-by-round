@@ -1,10 +1,12 @@
 import {
-  addMirror, findPiece, findShape, fuseShapes, nextId, nextPieceId, partnerOf, pieceOf, separatePiece,
-  updatePiece, updateShape, SHAPE_NAMES, YARN_COLORS, type FusedPiece, type Quat, type Shape, type Vec3,
+  addMirror, canSew, eyesOf, findPiece, findShape, fuseShapes, hostOf, itemFor, listItems, nextId, nextPieceId, partnerOf, pieceOf,
+  separatePiece, setEyes, sewOnto, shapeHeight, shapeRadius, updatePiece, updateShape, SHAPE_NAMES, YARN_COLORS,
+  type FusedPiece, type Project, type Quat, type Shape, type Vec3,
 } from '@rbr/engine';
 import { useEffect, useState, type CSSProperties } from "react";
 import { Euler, MathUtils, Quaternion } from 'three';
-import { removeSelection, selectedShapes } from '../state/actions';
+import { placeShape, removeSelection, selectedShapes } from '../state/actions';
+import { usePlan } from '../state/plan';
 import { useEditor, type Editor } from '../state/editor';
 
 const PARAM_UI: Record<string, { label: string; min: number; max: number; step: number; unit?: string; pct?: boolean }> = {
@@ -62,7 +64,82 @@ function YarnPicker({ value, onPick }: { value: string; onPick(hex: string): voi
 }
 
 const KEYS = <p className="meta keys">F fuse · M move · T turn · Del remove · Ctrl+Z undo</p>;
-const SHIFT_TIP = <p className="tip"><kbd>Shift</kbd> + click to select several shapes, then fuse them into one piece.</p>;
+const SHIFT_TIP = <p className="tip"><kbd>Shift</kbd> + click to select several shapes, then fuse them into one piece or sew one onto another.</p>;
+
+/** Pick the piece this one is sewn onto. Sewn pieces are trimmed where they sink in and end in an open edge. */
+function SewControl({ ed, id }: { ed: Editor; id: string }) {
+  const { project } = ed;
+  const host = hostOf(project, id);
+  const options = listItems(project).filter((it) => it.id === host || canSew(project, id, it.id));
+  const partner = findShape(project, id) && partnerOf(project, id);
+  return (
+    <div className="group sew-onto">
+      <label className="field" htmlFor="sew-onto">
+        <span className="field-label">Sewn onto</span>
+        <select id="sew-onto" value={host ?? ''} onChange={(e) => ed.edit(sewOnto(project, id, e.target.value || null))}>
+          <option value="">Nothing: its own piece</option>
+          {options.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+        </select>
+      </label>
+      <p className="meta">
+        {host
+          ? `Crocheted separately, trimmed where it sinks into ${itemFor(project, host)?.name}, and sewn on along the open edge.${partner ? ' Its mirror is sewn on the same way.' : ''}`
+          : 'Push it into another piece with the move tool, then pick that piece here to sew it on.'}
+      </p>
+    </div>
+  );
+}
+
+/** Safety eyes, placed the way a pattern says it: between two rounds, so many stitches apart. */
+function EyesControl({ ed, id }: { ed: Editor; id: string }) {
+  const { project } = ed;
+  const plan = usePlan();
+  const eyes = eyesOf(project, id);
+  const rounds = plan.pieces.find((x) => x.id === id)?.rounds.rounds.length ?? 0;
+  if (rounds < 4) return null;
+  const change = (patch: Partial<{ round: number; apart: number; sizeMm: number }>) =>
+    ed.edit(setEyes(project, id, { round: eyes?.round ?? Math.round(rounds / 2), apart: eyes?.apart ?? 6, sizeMm: eyes?.sizeMm ?? 9, ...patch }));
+  if (!eyes) {
+    return (
+      <div className="group">
+        <span className="field-label">Safety eyes</span>
+        <div><button type="button" id="add-eyes" className="btn quiet small" onClick={() => change({})}>Add eyes</button></div>
+      </div>
+    );
+  }
+  return (
+    <div className="group eyes">
+      <span className="field-label">Safety eyes</span>
+      <label className="slider" htmlFor="eyes-round">
+        <span className="slider-head">Between rounds <output>{eyes.round} and {eyes.round + 1}</output></span>
+        <input id="eyes-round" type="range" min={1} max={rounds - 1} step={1} value={Math.min(eyes.round, rounds - 1)} onChange={(e) => change({ round: +e.target.value })} />
+      </label>
+      <label className="slider" htmlFor="eyes-apart">
+        <span className="slider-head">Stitches apart <output>{eyes.apart}</output></span>
+        <input id="eyes-apart" type="range" min={1} max={16} step={1} value={eyes.apart} onChange={(e) => change({ apart: +e.target.value })} />
+      </label>
+      <div className="joined">
+        <label className="field" htmlFor="eyes-size">
+          <select id="eyes-size" value={eyes.sizeMm} onChange={(e) => change({ sizeMm: +e.target.value })} aria-label="Eye size">
+            {[6, 8, 9, 10, 12, 15].map((mm) => <option key={mm} value={mm}>{mm} mm eyes</option>)}
+          </select>
+        </label>
+        <button type="button" className="link" onClick={() => ed.edit(setEyes(project, id, null))}>Remove eyes</button>
+      </div>
+    </div>
+  );
+}
+
+/** With two pieces picked, offer to sew the smaller onto the bigger (or the other way). */
+function sewPair(p: Project, ids: string[]): { child: string; host: string; childName: string; hostName: string }[] {
+  const items = [...new Set(ids.map((id) => itemFor(p, id)?.id).filter((x): x is string => !!x))].map((id) => itemFor(p, id)!);
+  if (items.length !== 2) return [];
+  const bulk = (shapes: Shape[]) => shapes.reduce((a, s) => a + shapeRadius(s) ** 2 * shapeHeight(s), 0);
+  const [a, b] = bulk(items[0]!.shapes) <= bulk(items[1]!.shapes) ? [items[0]!, items[1]!] : [items[1]!, items[0]!];
+  return ([[a, b], [b, a]] as const)
+    .filter(([c, h]) => canSew(p, c.id, h.id))
+    .map(([c, h]) => ({ child: c.id, host: h.id, childName: c.name, hostName: h.name }));
+}
 
 export function Inspector() {
   const ed = useEditor();
@@ -94,9 +171,15 @@ function ManyInspector({ ed }: { ed: Editor }) {
   return (
     <section className="paper card inspector" aria-label="Selection">
       <span className="eyebrow">{selected.length} picked · {shapes.length} shapes</span>
-      <p className="meta">Move and turn them together. When they overlap the way you want, fuse them: the outside of all of them becomes one shell, crocheted as one piece.</p>
+      <p className="meta">Move and turn them together. When they overlap the way you want, fuse them into one shell crocheted as one piece, or sew one onto the other.</p>
       <div className="actions">
         <button type="button" className="btn" onClick={fuse} disabled={shapes.length < 2}>Fuse into one piece</button>
+        {sewPair(project, selected).map((o, i) => (
+          <button key={o.child} type="button" className={`btn${i ? ' quiet small' : ''}`} id={i ? 'sew-swapped' : 'sew-pair'}
+            onClick={() => { ed.edit(sewOnto(project, o.child, o.host), [o.child]); ed.setMulti(false); }}>
+            Sew {o.childName} onto {o.hostName}
+          </button>
+        ))}
         <button type="button" className="btn quiet small danger" onClick={() => ed.edit(removeSelection(project, selected), [])}>Remove</button>
       </div>
       {KEYS}
@@ -116,6 +199,8 @@ function PieceInspector({ ed, piece }: { ed: Editor; piece: FusedPiece }) {
         <p className="meta">Crocheted as one shell around all its shapes. It moves as one; pick a part below to adjust it.</p>
       </div>
       <YarnPicker value={piece.color} onPick={(hex) => ed.edit(updatePiece(project, piece.id, { color: hex }))} />
+      <SewControl ed={ed} id={piece.id} />
+      <EyesControl ed={ed} id={piece.id} />
       <div className="group">
         <span className="field-label">Parts</span>
         <ul className="parts">
@@ -140,8 +225,8 @@ function ShapeInspector({ ed, s }: { ed: Editor; s: Shape }) {
   const previewParam = (k: string, v: number) => ed.preview(updateShape(project, s.id, { params: { [k]: v } }));
   const pos = s.transform.position;
   const rot = toEulerDeg(s.transform.rotation);
-  const setPos = (i: number, v: number) => patch({ transform: { ...s.transform, position: pos.map((x, j) => (j === i ? v : x)) as Vec3 } });
-  const setRot = (i: number, v: number) => patch({ transform: { ...s.transform, rotation: fromEulerDeg(rot.map((x, j) => (j === i ? v : x)) as Vec3) } });
+  const setPos = (i: number, v: number) => ed.edit(placeShape(project, s.id, { ...s.transform, position: pos.map((x, j) => (j === i ? v : x)) as Vec3 }));
+  const setRot = (i: number, v: number) => ed.edit(placeShape(project, s.id, { ...s.transform, rotation: fromEulerDeg(rot.map((x, j) => (j === i ? v : x)) as Vec3) }));
 
   return (
     <section className="paper card inspector" aria-label="Shape">
@@ -170,6 +255,8 @@ function ShapeInspector({ ed, s }: { ed: Editor; s: Shape }) {
       </div>
 
       {!piece && <YarnPicker value={s.color} onPick={(hex) => patch({ color: hex })} />}
+      {!piece && <SewControl ed={ed} id={s.id} />}
+      {!piece && !s.mirrorOf && <EyesControl ed={ed} id={s.id} />}
 
       <div className="group">
         <span className="field-label">Position <span className="meta">cm</span></span>
@@ -193,7 +280,7 @@ function ShapeInspector({ ed, s }: { ed: Editor; s: Shape }) {
       {!piece && (
         <div className="actions">
           <button type="button" className="btn small" onClick={() => ed.setMulti(true)} disabled={ed.multi}>
-            {ed.multi ? 'Now click the other shapes…' : 'Fuse with other shapes…'}
+            {ed.multi ? 'Now click the other shapes…' : 'Fuse or sew with other shapes…'}
           </button>
         </div>
       )}

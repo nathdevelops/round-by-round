@@ -1,6 +1,7 @@
-import { emptyProject, parseProject, serializeProject, starterProject, ProjectFileError } from '@rbr/engine';
+import { emptyProject, parseProject, serializeProject, STARTERS, ProjectFileError } from '@rbr/engine';
 import { useRef, useState } from 'react';
 import { useEditor } from '../state/editor';
+import { FIT_EVENT } from '../editor/Stage';
 
 type Dialog = null | 'save' | 'open' | 'new';
 
@@ -18,6 +19,7 @@ export function TopBar() {
   const open = (t: string) => {
     try {
       ed.edit(parseProject(t), []);
+      setTimeout(() => window.dispatchEvent(new Event(FIT_EVENT)));
       setDialog(null);
       setPaste('');
       setError('');
@@ -81,10 +83,12 @@ export function TopBar() {
             {dialog === 'new' && (
               <>
                 <h2 id="dlg-title">Start something new</h2>
-                <p className="meta">You can undo this if you change your mind.</p>
+                <p className="meta">Start from a blank table or a finished toy. You can undo this if you change your mind.</p>
                 <div className="row">
                   <button type="button" className="btn" onClick={() => { ed.edit(emptyProject(), []); close(); }}>Blank table</button>
-                  <button type="button" className="btn quiet" onClick={() => { ed.edit(starterProject(), []); close(); }}>Mushroom to start from</button>
+                  {STARTERS.map((st) => (
+                    <button key={st.id} type="button" id={`starter-${st.id}`} className="btn quiet" onClick={() => { ed.edit(st.make(), []); close(); setTimeout(() => window.dispatchEvent(new Event(FIT_EVENT))); }}>{st.label}</button>
+                  ))}
                 </div>
               </>
             )}
