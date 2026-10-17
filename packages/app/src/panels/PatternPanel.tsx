@@ -1,9 +1,6 @@
-import {
-  computeRounds, findPiece, findShape, fusedProfile, inFrameOf, partnerOf, patternLines, patternText, pieceOf, shapeProfile, YARN_PRESETS,
-  type FusedPiece, type Project, type ProfilePoint, type RoundingMode, type Shape, type Terms,
-} from '@rbr/engine';
-import { useDeferredValue, useMemo } from 'react';
+import { itemFor, planText, YARN_PRESETS, type PiecePlan, type Project, type RoundingMode, type Terms } from '@rbr/engine';
 import { useEditor } from '../state/editor';
+import { usePlan } from '../state/plan';
 
 const ROUNDING: { id: RoundingMode; label: string; hint: string }[] = [
   { id: 'classic6', label: 'Classic', hint: 'steps of 6' },
@@ -11,78 +8,34 @@ const ROUNDING: { id: RoundingMode; label: string; hint: string }[] = [
   { id: 'smooth', label: 'Smooth', hint: 'any count' },
 ];
 
-/** What gets crocheted: a fused piece, or a shape on its own. */
-type Item = { kind: 'fused'; piece: FusedPiece } | { kind: 'shape'; shape: Shape };
-
-const itemId = (it: Item) => (it.kind === 'fused' ? it.piece.id : it.shape.id);
-const itemName = (it: Item) => (it.kind === 'fused' ? it.piece.name : it.shape.name);
-const itemColor = (it: Item) => (it.kind === 'fused' ? it.piece.color : it.shape.color);
-
-function patternOf(p: Project, it: Item) {
-  const yarn = YARN_PRESETS.find((y) => y.id === p.settings.yarnId) ?? YARN_PRESETS[3]!;
-  let profile: ProfilePoint[];
-  let splits: [number, number][] = [];
-  if (it.kind === 'fused') {
-    const f = measureFused(p.shapes.filter((s) => it.piece.shapeIds.includes(s.id)));
-    profile = f.profile;
-    splits = f.splits;
-  } else profile = shapeProfile(it.shape);
-  const piece = computeRounds(profile, { gauge: yarn.gauge, stretch: p.settings.stretch, rounding: p.settings.rounding });
-  // Rounds whose height falls inside a split range.
-  const splitRounds = piece.rounds.filter((r) => splits.some(([a, b]) => r.z >= a - 0.2 && r.z <= b + 0.2)).map((r) => r.n);
-  return { piece, lines: patternLines(piece.rounds, p.settings.terms), splitRounds };
-}
-
-/**
- * Measuring a fused shell takes a moment, and moving or turning the piece doesn't change it,
- * so results are kept by the parts' layout relative to each other.
- */
-const fusedCache = new Map<string, ReturnType<typeof fusedProfile>>();
-function measureFused(shapes: Shape[]) {
-  const local = inFrameOf(shapes, shapes[0]!.transform);
-  const r3 = (v: number) => Math.round(v * 1e4) / 1e4;
-  const key = JSON.stringify(local.map((s) => [s.kind, s.params, s.transform.position.map(r3), s.transform.rotation.map(r3)]));
-  let hit = fusedCache.get(key);
-  if (!hit) {
-    hit = fusedProfile(local);
-    fusedCache.set(key, hit);
-    if (fusedCache.size > 40) fusedCache.delete(fusedCache.keys().next().value!);
-  }
-  return hit;
-}
-
-/** Everything to crochet: fused pieces, then loose shapes. Mirrored pairs are one entry made twice. */
-function items(p: Project): Item[] {
-  return [
-    ...p.fused.map((piece) => ({ kind: 'fused' as const, piece })),
-    ...p.shapes.filter((s) => !pieceOf(p, s.id) && !(s.mirrorOf && findShape(p, s.mirrorOf))).map((shape) => ({ kind: 'shape' as const, shape })),
-  ];
-}
-
 const span = (ns: number[]) => (ns.length > 1 ? `Rnds ${ns[0]}–${ns[ns.length - 1]}` : `Rnd ${ns[0]}`);
+
+function CopyButton({ text, label = 'Copy' }: { text: () => string; label?: string }) {
+  return (
+    <button type="button" className="btn quiet small" onClick={(e) => {
+      const btn = e.currentTarget;
+      const done = () => { btn.textContent = 'Copied'; setTimeout(() => (btn.textContent = label), 1400); };
+      navigator.clipboard?.writeText(text()).then(done, () => {});
+    }}>{label}</button>
+  );
+}
 
 export function PatternPanel() {
   const ed = useEditor();
-  // Fused patterns take a moment to measure, so follow drags a beat behind.
-  const project = useDeferredValue(ed.project);
-  const set = (patch: Partial<Project['settings']>) => ed.edit({ ...ed.project, settings: { ...ed.project.settings, ...patch } });
+  const plan = usePlan();
+  const { project } = ed;
+  const set = (patch: Partial<Project['settings']>) => ed.edit({ ...project, settings: { ...project.settings, ...patch } });
   const yarn = YARN_PRESETS.find((y) => y.id === project.settings.yarnId) ?? YARN_PRESETS[3]!;
 
-  // Show the pattern of whatever single thing is selected; a part shows its whole piece.
-  const shown: Item | null = useMemo(() => {
-    if (ed.selected.length !== 1) return null;
-    const id = ed.selected[0]!;
-    const piece = findPiece(project, id) ?? pieceOf(project, id);
-    if (piece) return { kind: 'fused', piece };
-    const s = findShape(project, id);
-    if (!s) return null;
-    return { kind: 'shape', shape: s.mirrorOf ? findShape(project, s.mirrorOf) ?? s : s };
-  }, [project, ed.selected]);
-  const result = useMemo(() => (shown ? patternOf(project, shown) : null), [project, shown]);
-  const summary = useMemo(() => items(project).map((it) => ({
-    it, rounds: patternOf(project, it).piece.rounds.length,
-    make: it.kind === 'shape' && partnerOf(project, it.shape.id) ? 2 : 1,
-  })), [project]);
+  // Show the pattern of whatever single thing is selected; a part shows its whole piece,
+  // and a mirrored copy shows the pattern it shares with its partner.
+  let shown: PiecePlan | undefined;
+  if (ed.selected.length === 1) {
+    const it = itemFor(project, ed.selected[0]!);
+    const id = it?.kind === 'shape' && it.shape.mirrorOf && !plan.pieces.some((x) => x.id === it.id) ? it.shape.mirrorOf : it?.id;
+    shown = plan.pieces.find((x) => x.id === id);
+  }
+  const nameOf = (id: string) => plan.pieces.find((x) => x.id === id)?.name ?? itemFor(project, id)?.name ?? '';
 
   return (
     <section className="paper card pattern" aria-label="Pattern">
@@ -109,35 +62,39 @@ export function PatternPanel() {
       </div>
 
       <div className="pieces">
-        <span className="eyebrow">Pieces</span>
-        {summary.length ? (
+        <div className="pattern-head">
+          <span className="eyebrow">Pieces, in making order</span>
+          {plan.pieces.length > 0 && <CopyButton label="Copy all" text={() => planText(project, plan)} />}
+        </div>
+        {plan.pieces.length ? (
           <ul className="piece-list">
-            {summary.map(({ it, rounds, make }) => (
-              <li key={itemId(it)} className={ed.selected.includes(itemId(it)) ? 'on' : ''}>
-                <button type="button" className="link" onClick={(e) => ed.select(itemId(it), e.shiftKey || e.ctrlKey || e.metaKey)}>
-                  <i style={{ background: itemColor(it) }} aria-hidden="true" />{itemName(it)}
+            {plan.pieces.map((pc) => (
+              <li key={pc.id} className={`${ed.selected.includes(pc.id) ? 'on' : ''}${pc.hostId ? ' sewn' : ''}`}>
+                <button type="button" className="link" onClick={(e) => ed.select(pc.id, e.shiftKey || e.ctrlKey || e.metaKey)}>
+                  <i style={{ background: pc.color }} aria-hidden="true" />{pc.name}
                 </button>
-                <span className="meta">{it.kind === 'fused' ? 'fused · ' : ''}{make > 1 ? 'make 2 · ' : ''}{rounds} rnds</span>
+                <span className="meta">
+                  {pc.item.kind === 'fused' ? 'fused · ' : ''}{pc.make > 1 ? 'make 2 · ' : ''}{pc.hostId ? `sewn to ${nameOf(pc.hostId)} · ` : ''}{pc.rounds.rounds.length} rnds
+                  {pc.issues.length > 0 && <b className="flag" title={pc.issues.join(' ')}> !</b>}
+                </span>
               </li>
             ))}
           </ul>
         ) : <p className="meta">Add a shape to see its pattern.</p>}
       </div>
-      {shown && result && (
+
+      {shown && (
         <>
           <div className="pattern-head">
-            <h2>{itemName(shown)}</h2>
-            <button type="button" className="btn quiet small" onClick={(e) => {
-              const btn = e.currentTarget;
-              const done = () => { btn.textContent = 'Copied'; setTimeout(() => (btn.textContent = 'Copy'), 1400); };
-              navigator.clipboard?.writeText(`${itemName(shown)}\n${patternText(result.lines)}`).then(done, () => {});
-            }}>Copy</button>
+            <h2>{shown.name}</h2>
+            <CopyButton text={() => [shown!.name, ...shown!.lines.map((l) => `${l.label}: ${l.text} (${l.count})`), ...shown!.finish].join('\n')} />
           </div>
           <p className="meta">
-            {shown.kind === 'fused' ? `One piece from ${shown.piece.shapeIds.length} shapes · ` : partnerOf(project, shown.shape.id) ? 'Make 2 · ' : ''}{yarn.label} · {result.piece.rounds.length} rounds · {result.piece.rounds.reduce((a, r) => a + r.count, 0)} stitches
+            {shown.item.kind === 'fused' ? `One piece from ${shown.item.shapes.length} shapes · ` : shown.make > 1 ? 'Make 2 · ' : ''}
+            {yarn.label} · {shown.rounds.rounds.length} rounds · {shown.rounds.rounds.reduce((a, r) => a + r.count, 0)} stitches
           </p>
           <ol className="rows">
-            {result.lines.map((l) => (
+            {shown.lines.map((l) => (
               <li key={l.label} className={l.kind}>
                 <span className="lbl">{l.label}</span>
                 <span className="txt">{l.text}</span>
@@ -145,13 +102,22 @@ export function PatternPanel() {
               </li>
             ))}
           </ol>
-          {result.splitRounds.length > 0 && (
+          {shown.finish.map((f) => <p key={f} className="finish">{f}</p>)}
+          {shown.seam && <p className="seam-note"><span className="eyebrow">Sewing on</span>{shown.seam.text}</p>}
+          {shown.splitRounds.length > 0 && (
             <p className="warn" role="note">
-              <b>{span(result.splitRounds)} split into separate tubes.</b> The shapes don’t overlap there, so that stretch can’t be worked as one round. Move them closer, or separate them.
+              <b>{span(shown.splitRounds)} split into separate tubes.</b> The shapes don’t overlap there, so that stretch can’t be worked as one round. Move them closer, or separate them.
             </p>
           )}
-          <p className="note">{result.piece.closedEnd ? 'stuff, then close the last 6' : 'leave a long tail'}</p>
+          {shown.issues.map((t) => <p key={t} className="warn" role="note">{t}</p>)}
         </>
+      )}
+
+      {plan.assembly.length > 0 && (
+        <div className="assembly">
+          <span className="eyebrow">Assembly</span>
+          <ol>{plan.assembly.map((a) => <li key={a}>{a}</li>)}</ol>
+        </div>
       )}
     </section>
   );

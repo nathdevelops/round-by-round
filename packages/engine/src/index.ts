@@ -8,3 +8,6 @@ export * from './project';
 export * from './geometry';
 export * from './history';
 export * from './fuse';
+export * from './sew';
+export * from './assembly';
+export * from './starters';

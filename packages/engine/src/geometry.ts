@@ -87,3 +87,17 @@ export function rotate(q: Quat, v: Vec3): Vec3 {
     iz * w + iw * -z + ix * -y - iy * -x,
   ];
 }
+
+/**
+ * Where a shape's crochet profile sits in the world: profile height z is at
+ * `start + axis * z`. Cones and domes are worked from their tip or crown, so their
+ * working axis points down the shape.
+ */
+export function workingFrame(spec: ShapeSpec & { transform: { position: Vec3; rotation: Quat } }): { start: Vec3; axis: Vec3 } {
+  const zs = shapeProfile(spec).map((p) => p.z);
+  const lo = Math.min(...zs), hi = Math.max(...zs);
+  const up = normalize(rotate(spec.transform.rotation, [0, 1, 0]));
+  const p = spec.transform.position;
+  if (BASE_AT_END.has(spec.kind)) return { start: [p[0] + up[0] * hi, p[1] + up[1] * hi, p[2] + up[2] * hi], axis: [-up[0], -up[1], -up[2]] };
+  return { start: [p[0] - up[0] * lo, p[1] - up[1] * lo, p[2] - up[2] * lo], axis: up };
+}

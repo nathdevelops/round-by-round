@@ -1,5 +1,5 @@
 import {
-  commit, historyOf, parseProject, redo, serializeProject, starterProject, undo,
+  commit, historyOf, mushroomStarter, parseProject, redo, serializeProject, undo,
   type History, type Project,
 } from '@rbr/engine';
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
@@ -74,7 +74,7 @@ function loadSaved(): Project {
   } catch {
     // Storage blocked or the saved copy is unreadable: start fresh.
   }
-  return starterProject();
+  return mushroomStarter();
 }
 
 export interface Editor {

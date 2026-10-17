@@ -1,9 +1,10 @@
-import { pieceOf, shapeHeight, updateShape, type Project, type Quat, type ShapeKind, type Vec3 } from '@rbr/engine';
-import { ContactShadows, OrbitControls, TransformControls } from '@react-three/drei';
+import { fusedBounds, pieceOf, shapeHeight, type Project, type ShapeKind, type Vec3 } from '@rbr/engine';
+import { ContactShadows, Line, OrbitControls, TransformControls } from '@react-three/drei';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Matrix4, Object3D, Plane, Quaternion, Raycaster, Vector2, Vector3 } from 'three';
-import { addShapeOf, isEditingPart, selectedShapes } from '../state/actions';
+import { addShapeOf, isEditingPart, moveShapes, movingShapes, selectedShapes } from '../state/actions';
+import { usePlan } from '../state/plan';
 import { useEditor } from '../state/editor';
 import { FusedMesh } from './FusedMesh';
 import { ShapeMesh } from './ShapeMesh';
@@ -29,10 +30,48 @@ function DropProbe({ probe }: { probe: MutableRefObject<DropFn | null> }) {
   return null;
 }
 
+/** Event that asks the stage to frame the whole project (after New or Open). */
+export const FIT_EVENT = 'rbr:fit';
+
+/** Frame the project in view: on first load and whenever a different project is opened. */
+function CameraFit({ project }: { project: Project }) {
+  const { camera, controls } = useThree() as unknown as { camera: { position: Vector3; fov: number; lookAt(v: Vector3): void }; controls: { target: Vector3; update(): void } | null };
+  const latest = useRef(project);
+  latest.current = project;
+  useEffect(() => {
+    const fit = () => {
+      const shapes = latest.current.shapes;
+      if (!shapes.length || !controls) return;
+      const { center, half } = fusedBounds(shapes, 0.5);
+      const radius = Math.max(3, Math.hypot(...half));
+      const dist = radius / Math.sin(((camera.fov || 38) * Math.PI) / 360);
+      const target = new Vector3(...center);
+      camera.position.copy(target).add(new Vector3(10, 9, 14).normalize().multiplyScalar(dist));
+      controls.target.copy(target);
+      controls.update();
+    };
+    fit();
+    window.addEventListener(FIT_EVENT, fit);
+    return () => window.removeEventListener(FIT_EVENT, fit);
+  }, [camera, controls]);
+  return null;
+}
+
 export const SHAPE_DRAG_TYPE = 'application/x-rbr-shape';
 
 const ONE = new Vector3(1, 1, 1);
-const round3 = (v: number) => Math.round(v * 1000) / 1000;
+const Y = new Vector3(0, 1, 0);
+
+/** A pair of safety eyes: glossy black domes sitting on the surface. */
+function Eye({ position, normal, size }: { position: Vec3; normal: Vec3; size: number }) {
+  const q = new Quaternion().setFromUnitVectors(Y, new Vector3(...normal));
+  return (
+    <mesh position={position} quaternion={q} castShadow>
+      <sphereGeometry args={[size, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+      <meshStandardMaterial color="#1d1714" roughness={0.18} metalness={0.1} />
+    </mesh>
+  );
+}
 
 export function Stage() {
   const ed = useEditor();
@@ -43,8 +82,10 @@ export function Stage() {
 
   // The gizmo drives an invisible pivot; whatever is selected follows it as one block.
   const pivot = useMemo(() => new Object3D(), []);
+  const plan = usePlan();
+  const seamColor = useThemeColor('--rust');
   const members = selectedShapes(project, selected);
-  const drag = useRef<{ inv: Matrix4; base: Project; parts: { id: string; m: Matrix4 }[] } | null>(null);
+  const drag = useRef<{ inv: Matrix4; base: Project; ids: string[] } | null>(null);
   const membersKey = JSON.stringify(members.map((s) => [s.id, s.transform, s.kind, s.params]));
 
   useLayoutEffect(() => {
@@ -68,14 +109,12 @@ export function Stage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pivot, membersKey]);
 
+  // Pieces sewn onto the selection come along with it.
   const startDrag = () => {
     drag.current = {
       inv: new Matrix4().compose(pivot.position, pivot.quaternion, ONE).invert(),
       base: project,
-      parts: members.map((s) => ({
-        id: s.id,
-        m: new Matrix4().compose(new Vector3(...s.transform.position), new Quaternion(...s.transform.rotation), ONE),
-      })),
+      ids: movingShapes(project, selected).map((s) => s.id),
     };
   };
 
@@ -83,18 +122,7 @@ export function Stage() {
     const d = drag.current;
     if (!d) return;
     const delta = new Matrix4().compose(pivot.position, pivot.quaternion, ONE).multiply(d.inv);
-    const pos = new Vector3(), quat = new Quaternion(), scl = new Vector3();
-    // A single loose shape keeps its mirror partner in step; a moved group moves as it is.
-    const mirror = d.parts.length === 1;
-    let next = d.base;
-    for (const part of d.parts) {
-      new Matrix4().multiplyMatrices(delta, part.m).decompose(pos, quat, scl);
-      const s = next.shapes.find((x) => x.id === part.id)!;
-      next = updateShape(next, part.id, {
-        transform: { position: pos.toArray().map(round3) as Vec3, rotation: quat.toArray() as Quat, scale: s.transform.scale },
-      }, mirror);
-    }
-    ed.preview(next);
+    ed.preview(moveShapes(d.base, d.ids, delta));
   };
 
   const additive = (e: ThreeEvent<MouseEvent>) => e.nativeEvent.shiftKey || e.nativeEvent.ctrlKey || e.nativeEvent.metaKey;
@@ -145,9 +173,20 @@ export function Stage() {
           const s = project.shapes.find((x) => x.id === editingPart)!;
           return <ShapeMesh shape={{ ...s, color: pieceOf(project, s.id)!.color }} selected highlight={highlight} onPick={pick(s.id)} />;
         })()}
+        {plan.seams.map((sm) => sm.ring.length > 2 && (
+          <Line
+            key={sm.childId} points={[...sm.ring, sm.ring[0]!]} color={seamColor} lineWidth={selected.includes(sm.childId) || selected.includes(sm.hostId) ? 3 : 2}
+            dashed dashSize={0.18} gapSize={0.12} depthTest={false} transparent opacity={0.9} renderOrder={2}
+          />
+        ))}
+        {plan.eyes.map((e) => {
+          const mm = project.markers.find((m) => m.itemId === e.itemId)?.sizeMm ?? 9;
+          return e.points.map((pt, i) => <Eye key={`${e.itemId}-${i}`} position={pt.position} normal={pt.normal} size={mm / 20} />);
+        })}
         <primitive object={pivot} />
         <ContactShadows position={[0, -0.02, 0]} opacity={0.35} scale={40} blur={2.4} far={14} />
         <DropProbe probe={probe} />
+        <CameraFit project={project} />
         {members.length > 0 && (
           <TransformControls
             object={pivot} mode={mode} size={0.8}
@@ -171,7 +210,7 @@ export function Stage() {
       {ed.multi ? (
         <p className="stage-hint note">click each shape you want, then press “Fuse into one piece”</p>
       ) : project.shapes.length > 1 && selected.length < 2 && (
-        <p className="stage-tip"><kbd>Shift</kbd> + click to select several shapes</p>
+        <p className="stage-tip"><kbd>Shift</kbd> + click to select several shapes, then fuse or sew</p>
       )}
     </div>
   );

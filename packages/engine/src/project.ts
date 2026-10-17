@@ -32,6 +32,11 @@ export interface Shape {
 
 export type JoinMode = 'sew' | 'fuse';
 
+/**
+ * How two pieces meet. A sew join reads "a is sewn onto b": a is crocheted on its own,
+ * trimmed where it sinks into b, and finished with an open edge to sew on. Either end can
+ * be a loose shape or a fused piece.
+ */
 export interface Join {
   a: string;
   b: string;
@@ -39,13 +44,17 @@ export interface Join {
   blend?: number;
 }
 
+/**
+ * A pair of safety eyes, placed the way a pattern says it: on a piece, between round
+ * `round` and the next, with `apart` stitches between them, centred on the front.
+ */
 export interface Marker {
   id: string;
-  kind: 'eye' | 'embroidery';
-  shapeId: string;
-  position: Vec3;
-  size?: number;
-  note?: string;
+  kind: 'eyes';
+  itemId: string;
+  round: number;
+  apart: number;
+  sizeMm: number;
 }
 
 /**
@@ -206,7 +215,13 @@ export function addMirror(p: Project, id: string, newId: string): Project {
 
 /** Remove a shape, its joins and any references to it. Its mirror partner stays as an ordinary shape. */
 export function removeShape(p: Project, id: string): Project {
-  return {
+  // A piece left with one shape dissolves; whatever was sewn to it moves to that shape.
+  const map = new Map<string, string>();
+  for (const f of p.fused) {
+    const rest = f.shapeIds.filter((s) => s !== id);
+    if (f.shapeIds.includes(id) && rest.length === 1) map.set(f.id, rest[0]!);
+  }
+  const next: Project = {
     ...p,
     shapes: p.shapes.filter((s) => s.id !== id).map((s) => {
       if (s.mirrorOf !== id && s.hostId !== id) return s;
@@ -219,8 +234,9 @@ export function removeShape(p: Project, id: string): Project {
     fused: p.fused
       .map((f) => ({ ...f, shapeIds: f.shapeIds.filter((s) => s !== id) }))
       .filter((f) => f.shapeIds.length > 1),
-    markers: p.markers.filter((m) => m.shapeId !== id),
+    markers: p.markers.filter((m) => m.itemId !== id),
   };
+  return pruneRefs(remapRefs(next, map));
 }
 
 // ---- Fused pieces ----
@@ -252,7 +268,10 @@ export function fuseShapes(p: Project, shapeIds: string[], newId: string): { pro
     shapeIds: ordered,
     color: first?.color ?? biggest(p, ordered).color,
   };
-  return { project: { ...p, fused: [...p.fused.filter((f) => !absorbed.has(f.id)), piece] }, id: piece.id };
+  const next = { ...p, fused: [...p.fused.filter((f) => !absorbed.has(f.id)), piece] };
+  // Seams and eyes on the fused shapes now belong to the piece.
+  const map = new Map<string, string>([...ids, ...absorbed].map((x) => [x, piece.id]));
+  return { project: remapRefs(next, map), id: piece.id };
 }
 
 /** The shape with the most bulk, whose colour a new fused piece takes. */
@@ -265,11 +284,41 @@ function biggest(p: Project, ids: string[]): Shape {
 export function separatePiece(p: Project, pieceId: string): Project {
   const f = findPiece(p, pieceId);
   if (!f) return p;
-  return {
+  const next = {
     ...p,
     fused: p.fused.filter((x) => x.id !== pieceId),
     shapes: p.shapes.map((s) => (f.shapeIds.includes(s.id) ? { ...s, color: f.color } : s)),
   };
+  // Seams and eyes on the piece go to its biggest shape.
+  return remapRefs(next, new Map([[pieceId, biggest(p, f.shapeIds).id]]));
+}
+
+/** Ids that can be sewn or carry eyes: fused pieces and shapes that aren't part of one. */
+export function itemIds(p: Project): Set<string> {
+  return new Set([...p.fused.map((f) => f.id), ...p.shapes.filter((s) => !pieceOf(p, s.id)).map((s) => s.id)]);
+}
+
+/** Point joins and markers at new ids, dropping joins that end up joining a piece to itself. */
+function remapRefs(p: Project, map: Map<string, string>): Project {
+  const to = (id: string) => map.get(id) ?? id;
+  const seen = new Set<string>();
+  const joins = p.joins.map((j) => ({ ...j, a: to(j.a), b: to(j.b) })).filter((j) => {
+    if (j.a === j.b) return false;
+    // A piece is sewn onto one host at most.
+    const key = j.mode === 'sew' ? `sew:${j.a}` : `${j.mode}:${[j.a, j.b].sort().join('|')}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { ...p, joins, markers: p.markers.map((m) => ({ ...m, itemId: to(m.itemId) })) };
+}
+
+/** Drop joins and markers whose pieces no longer exist. */
+function pruneRefs(p: Project): Project {
+  const ok = itemIds(p);
+  const shapes = new Set(p.shapes.map((s) => s.id));
+  const live = (id: string) => ok.has(id) || shapes.has(id);
+  return { ...p, joins: p.joins.filter((j) => live(j.a) && live(j.b)), markers: p.markers.filter((m) => ok.has(m.itemId)) };
 }
 
 export function updatePiece(p: Project, pieceId: string, patch: Partial<Pick<FusedPiece, 'name' | 'color'>>): Project {
@@ -368,9 +417,6 @@ export function parseProject(text: string): Project {
     if (s.mirrorOf && !ids.has(s.mirrorOf)) delete s.mirrorOf;
     if (s.hostId && !ids.has(s.hostId)) delete s.hostId;
   }
-  const joins: Join[] = (Array.isArray(o.joins) ? o.joins : [])
-    .filter((j: Record<string, unknown>) => ids.has(j.a as string) && ids.has(j.b as string) && (j.mode === 'sew' || j.mode === 'fuse'))
-    .map((j: Record<string, unknown>) => ({ a: j.a as string, b: j.b as string, mode: j.mode as JoinMode, ...(isNum(j.blend) ? { blend: j.blend } : {}) }));
   const claimed = new Set<string>();
   const fused: FusedPiece[] = (Array.isArray(o.fused) ? o.fused : []).flatMap((v: Record<string, unknown>, i: number) => {
     if (typeof v.id !== 'string' || !Array.isArray(v.shapeIds)) fail(`fused piece ${i + 1} is incomplete`);
@@ -384,7 +430,15 @@ export function parseProject(text: string): Project {
       color: typeof v.color === 'string' && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color : YARN_COLORS[0]!.hex,
     }];
   });
-  const markers: Marker[] = (Array.isArray(o.markers) ? o.markers : []).filter((m: Record<string, unknown>) => ids.has(m.shapeId as string) && isVec(m.position, 3));
+  const refs = new Set([...ids, ...fused.map((f) => f.id)]);
+  const joins: Join[] = (Array.isArray(o.joins) ? o.joins : [])
+    .filter((j: Record<string, unknown>) => refs.has(j.a as string) && refs.has(j.b as string) && j.a !== j.b && (j.mode === 'sew' || j.mode === 'fuse'))
+    .map((j: Record<string, unknown>) => ({ a: j.a as string, b: j.b as string, mode: j.mode as JoinMode, ...(isNum(j.blend) ? { blend: j.blend } : {}) }));
+  const markers: Marker[] = (Array.isArray(o.markers) ? o.markers : []).flatMap((v: Record<string, unknown>) => {
+    if (v.kind !== 'eyes' || typeof v.id !== 'string' || !refs.has(v.itemId as string)) return [];
+    if (!isNum(v.round) || !isNum(v.apart) || !isNum(v.sizeMm)) return [];
+    return [{ id: v.id, kind: 'eyes' as const, itemId: v.itemId as string, round: Math.max(1, Math.round(v.round)), apart: Math.max(0, Math.round(v.apart)), sizeMm: v.sizeMm }];
+  });
   const st = (o.settings ?? {}) as Record<string, unknown>;
   const settings: ProjectSettings = {
     yarnId: typeof st.yarnId === 'string' ? st.yarnId : DEFAULT_SETTINGS.yarnId,
@@ -392,5 +446,6 @@ export function parseProject(text: string): Project {
     rounding: st.rounding === 'balanced3' || st.rounding === 'smooth' ? st.rounding : 'classic6',
     terms: st.terms === 'UK' ? 'UK' : 'US',
   };
-  return { version: 1, name: typeof o.name === 'string' && o.name ? o.name : 'Untitled', shapes, joins, fused, markers, settings };
+  const project: Project = { version: 1, name: typeof o.name === 'string' && o.name ? o.name : 'Untitled', shapes, joins, fused, markers, settings };
+  return pruneRefs(remapRefs(project, new Map()));
 }

@@ -17,10 +17,14 @@ npm run build   # static site in packages/app/dist
 ## Layout
 
 - `packages/engine`: pure TypeScript pattern engine (no DOM, no three.js)
+  - `fuse.ts`: one shell from several shapes, sliced into a profile
+  - `sew.ts`: pieces, what each is sewn onto, safety eyes
+  - `assembly.ts`: trims sewn pieces, places seams in host rounds, writes the whole pattern
+  - `starters.ts`: Little Red Mushroom and Sitting Bear
 - `packages/app`: Vite + React + React Three Fiber editor
   - `editor/`: 3D stage, shape meshes, gizmos
   - `panels/`: shelf, inspector, pattern, top bar
-  - `state/`: project with undo/redo and autosave
+  - `state/`: project with undo/redo and autosave; the pattern plan
 - Style sheet (approved look and feel): https://claude.ai/artifact/DgJV4Ht3CvfVbTwkCypNZr; tokens live in `packages/app/src/theme.css`
-- `fixtures/`: starter projects and golden patterns, plus test-crochet results
+- `fixtures/`: golden patterns for the starters (`*.pattern.txt`; update with `npx vitest run -u` only when a change is meant), plus test-crochet results
 - `reference/`: the two prototypes this was built from (read-only)
