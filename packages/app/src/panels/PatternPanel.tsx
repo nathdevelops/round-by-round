@@ -1,4 +1,7 @@
-import { itemFor, planText, YARN_PRESETS, type PiecePlan, type Project, type RoundingMode, type Terms } from '@rbr/engine';
+import { itemFor, planText, YARN_PRESETS, type PatternLine, type PiecePlan, type Project, type RoundingMode, type Terms } from '@rbr/engine';
+import { useEffect, useRef, useState } from 'react';
+import { useView } from '../state/view';
+import { RoundPeek } from './RoundPeek';
 import { useEditor } from '../state/editor';
 import { usePlan } from '../state/plan';
 
@@ -20,9 +23,17 @@ function CopyButton({ text, label = 'Copy' }: { text: () => string; label?: stri
   );
 }
 
+/** How long to rest on a round before the peek opens (ms). */
+const PEEK_DELAY = 1500;
+
 export function PatternPanel() {
   const ed = useEditor();
   const plan = usePlan();
+  const view = useView();
+  const [peek, setPeek] = useState<{ line: PatternLine; anchor: DOMRect } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const rowsRef = useRef<HTMLOListElement>(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
   const { project } = ed;
   const set = (patch: Partial<Project['settings']>) => ed.edit({ ...project, settings: { ...project.settings, ...patch } });
   const yarn = YARN_PRESETS.find((y) => y.id === project.settings.yarnId) ?? YARN_PRESETS[3]!;
@@ -35,6 +46,25 @@ export function PatternPanel() {
     const id = it?.kind === 'shape' && it.shape.mirrorOf && !plan.pieces.some((x) => x.id === it.id) ? it.shape.mirrorOf : it?.id;
     shown = plan.pieces.find((x) => x.id === id);
   }
+  // The stage points at a round: light up its line and bring it into view.
+  const hot = view.hover && shown && view.hover.patternId === shown.id ? view.hover : null;
+  useEffect(() => {
+    if (!hot || hot.source !== 'stage') return;
+    rowsRef.current?.querySelector('li.hot')?.scrollIntoView({ block: 'nearest' });
+  }, [hot]);
+  const enterRow = (line: PatternLine, el: HTMLElement) => {
+    if (!shown) return;
+    view.setHover({ patternId: shown.id, from: line.from, to: line.to, source: 'pattern' });
+    clearTimeout(timer.current);
+    if (matchMedia('(hover: hover)').matches) timer.current = setTimeout(() => setPeek({ line, anchor: el.getBoundingClientRect() }), PEEK_DELAY);
+  };
+  const leaveRow = () => {
+    clearTimeout(timer.current);
+    setPeek(null);
+    view.setHover(null);
+  };
+  const peekPiece = peek && shown ? plan.stitches.find((x) => x.itemId === shown.id) : undefined;
+
   const nameOf = (id: string) => plan.pieces.find((x) => x.id === id)?.name ?? itemFor(project, id)?.name ?? '';
 
   return (
@@ -93,15 +123,25 @@ export function PatternPanel() {
             {shown.item.kind === 'fused' ? `One piece from ${shown.item.shapes.length} shapes · ` : shown.make > 1 ? 'Make 2 · ' : ''}
             {yarn.label} · {shown.rounds.rounds.length} rounds · {shown.rounds.rounds.reduce((a, r) => a + r.count, 0)} stitches
           </p>
-          <ol className="rows">
+          <ol className="rows" ref={rowsRef} onMouseLeave={leaveRow}>
             {shown.lines.map((l) => (
-              <li key={l.label} className={l.kind}>
+              <li
+                key={l.label}
+                className={`${l.kind}${hot && hot.from <= l.to && hot.to >= l.from ? ' hot' : ''}`}
+                onMouseEnter={(e) => enterRow(l, e.currentTarget)}
+              >
                 <span className="lbl">{l.label}</span>
                 <span className="txt">{l.text}</span>
                 <span className="cnt">({l.count})</span>
               </li>
             ))}
           </ol>
+          {peek && peekPiece && (
+            <RoundPeek
+              piece={peekPiece} from={peek.line.from} to={peek.line.to} anchor={peek.anchor}
+              caption={`${peek.line.label}: ${peek.line.text} (${peek.line.count})`}
+            />
+          )}
           {shown.finish.map((f) => <p key={f} className="finish">{f}</p>)}
           {shown.seam && <p className="seam-note"><span className="eyebrow">Sewing on</span>{shown.seam.text}</p>}
           {shown.splitRounds.length > 0 && (

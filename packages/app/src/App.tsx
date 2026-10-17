@@ -8,6 +8,7 @@ import { Shelf } from './panels/Shelf';
 import { TopBar } from './panels/TopBar';
 import { EditorProvider, useEditor } from './state/editor';
 import { PlanProvider } from './state/plan';
+import { ViewProvider } from './state/view';
 
 function Shortcuts() {
   const ed = useEditor();
@@ -42,6 +43,7 @@ export function App() {
     <EditorProvider>
       <Shortcuts />
       <PlanProvider>
+      <ViewProvider>
       <div className="app">
         <TopBar />
         <main className="workspace">
@@ -53,6 +55,7 @@ export function App() {
           </aside>
         </main>
       </div>
+      </ViewProvider>
       </PlanProvider>
     </EditorProvider>
   );

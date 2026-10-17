@@ -101,3 +101,18 @@ kbd { font: 800 11px/1 var(--body); padding: 3px 6px; border-radius: 4px; border
 .piece-list li.sewn > .link { padding-left: 14px; }
 .flag { color: var(--rust-deep); }
 .sew-onto .meta { margin: 0; }
+
+/* Stitch preview */
+.stage-tools .check { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 88%, transparent); }
+.stage-tools .explode { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; padding: 4px 12px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 88%, transparent); }
+.stage-tools .explode input { width: 120px; }
+.stage-legend { position: absolute; left: 16px; bottom: 12px; margin: 0; display: flex; gap: 14px; font-size: 13px; font-weight: 700; pointer-events: none; }
+.stage-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.stage-legend i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
+.k-start { background: var(--coral); } .k-inc { background: var(--moss); } .k-dec { background: var(--slate); }
+.ball-label { display: inline-block; white-space: nowrap; transform: translateY(-22px); padding: 4px 10px; border-radius: 999px; font: 700 12px var(--body); color: var(--bark); background: var(--paper); box-shadow: 0 2px 6px -2px var(--shadow); }
+.rows li { cursor: default; transition: background 0.1s ease; }
+.rows li.hot { background: color-mix(in srgb, var(--camel) 28%, transparent); }
+.peek { position: fixed; z-index: 20; width: 280px; padding: 10px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.peek .peek-canvas { height: 220px; border-radius: 4px; overflow: hidden; background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--paper) 80%, white), var(--paper) 75%); }
+.peek p { margin: 0; font: 13px/1.4 var(--pattern); }
